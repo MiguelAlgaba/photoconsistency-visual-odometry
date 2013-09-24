@@ -1,0 +1,16 @@
+%YAML:1.0
+numOptimizationLevels: 3
+blurFilterSize (at each level): [0, 5, 3]
+imageGradientsScalingFactor (at each level): [0.5, 0.5, 0.0625]
+max_num_iterations (at each level): [0, 0, 50]
+function_tolerance (at each level): [1e-4, 1e-4, 1e-4]
+gradient_tolerance (at each level): [1e-3, 1e-3, 1e-3]
+parameter_tolerance (at each level): [1e-4, 1e-4, 1e-6]
+initial_trust_region_radius (at each level): [1e8, 1e4, 1e4]
+max_trust_region_radius (at each level): [1e8, 1e8, 1e8]
+min_trust_region_radius (at each level): [1e-32,1e-32,1e-32]
+min_relative_decrease (at each level): [1e-1,1e-1,1e-3]
+num_threads: 2
+num_linear_solver_threads: 2
+minimizer_progress_to_stdout: 0
+visualizeIterations: 0

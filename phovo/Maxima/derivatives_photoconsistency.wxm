@@ -1,0 +1,41 @@
+/* [wxMaxima batch file version 1] [ DO NOT EDIT BY HAND! ]*/
+/* [ Created with wxMaxima version 0.8.5 ] */
+
+/* [wxMaxima: input   start ] */
+point3D    :   matrix([px],
+                      [py],
+                      [pz],
+                      [1]);
+
+Rt(x,y,z,yaw,pitch,roll)  :=  matrix([cos(yaw)*cos(pitch),cos(yaw)*sin(pitch)*sin(roll)-sin(yaw)*cos(roll),cos(yaw)*sin(pitch)*cos(roll)+sin(yaw)*sin(roll),x],
+               [sin(yaw)*cos(pitch),sin(yaw)*sin(pitch)*sin(roll)+cos(yaw)*cos(roll),sin(yaw)*sin(pitch)*cos(roll)-cos(yaw)*sin(roll),y],
+               [-sin(pitch),cos(pitch)*sin(roll),cos(pitch)*cos(roll),z],
+               [0,0,0,1]);
+
+transformedPoint3D(x,y,z,yaw,pitch,roll) := Rt(x,y,z,yaw,pitch,roll) . point3D;
+
+transformedPoint2D(x,y,z,yaw,pitch,roll) := matrix([((transformedPoint3D(x,y,z,yaw,pitch,roll)[1,1] * fx) / transformedPoint3D(x,y,z,yaw,pitch,roll)[3,1]) + ox],
+                                                   [((transformedPoint3D(x,y,z,yaw,pitch,roll)[2,1] * fy) / transformedPoint3D(x,y,z,yaw,pitch,roll)[3,1]) + oy]
+                                                  );
+/* [wxMaxima: input   end   ] */
+
+/* [wxMaxima: input   start ] */
+diff(transformedPoint2D(x,y,z,yaw,pitch,roll),x,1);
+diff(transformedPoint2D(x,y,z,yaw,pitch,roll),y,1);
+diff(transformedPoint2D(x,y,z,yaw,pitch,roll),z,1);
+diff(transformedPoint2D(x,y,z,yaw,pitch,roll),yaw,1);
+diff(transformedPoint2D(x,y,z,yaw,pitch,roll),pitch,1);
+diff(transformedPoint2D(x,y,z,yaw,pitch,roll),roll,1);
+/* [wxMaxima: input   end   ] */
+
+/* [wxMaxima: input   start ] */
+grind(diff(transformedPoint2D(x,y,z,yaw,pitch,roll),x,1));
+grind(diff(transformedPoint2D(x,y,z,yaw,pitch,roll),y,1));
+grind(diff(transformedPoint2D(x,y,z,yaw,pitch,roll),z,1));
+grind(diff(transformedPoint2D(x,y,z,yaw,pitch,roll),yaw,1));
+grind(diff(transformedPoint2D(x,y,z,yaw,pitch,roll),pitch,1));
+grind(diff(transformedPoint2D(x,y,z,yaw,pitch,roll),roll,1));
+/* [wxMaxima: input   end   ] */
+
+/* Maxima can't load/batch files which end with a comment! */
+"Created with wxMaxima"$

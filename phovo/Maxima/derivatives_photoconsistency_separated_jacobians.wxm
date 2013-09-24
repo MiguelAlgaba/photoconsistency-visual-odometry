@@ -1,0 +1,40 @@
+/* [wxMaxima batch file version 1] [ DO NOT EDIT BY HAND! ]*/
+/* [ Created with wxMaxima version 11.04.0 ] */
+
+/* [wxMaxima: input   start ] */
+point3D    :   matrix([px],
+                      [py],
+                      [pz],
+                      [1]);
+
+Rt(x,y,z,yaw,pitch,roll)  :=  matrix([cos(yaw)*cos(pitch),cos(yaw)*sin(pitch)*sin(roll)-sin(yaw)*cos(roll),cos(yaw)*sin(pitch)*cos(roll)+sin(yaw)*sin(roll),x],
+               [sin(yaw)*cos(pitch),sin(yaw)*sin(pitch)*sin(roll)+cos(yaw)*cos(roll),sin(yaw)*sin(pitch)*cos(roll)-cos(yaw)*sin(roll),y],
+               [-sin(pitch),cos(pitch)*sin(roll),cos(pitch)*cos(roll),z],
+               [0,0,0,1]);
+
+transformedPoint3D(x,y,z,yaw,pitch,roll) := Rt(x,y,z,yaw,pitch,roll) . point3D;
+
+proyected2DPoint(x,y,z) := matrix([((x * fx) / z) + ox],
+                                  [((y * fy) / z) + oy]
+                                 );
+/* [wxMaxima: input   end   ] */
+
+/* [wxMaxima: input   start ] */
+/*Derivatives of the transformed 3D point*/
+diff(transformedPoint3D(x,y,z,yaw,pitch,roll),x,1);
+diff(transformedPoint3D(x,y,z,yaw,pitch,roll),y,1);
+diff(transformedPoint3D(x,y,z,yaw,pitch,roll),z,1);
+diff(transformedPoint3D(x,y,z,yaw,pitch,roll),yaw,1);
+diff(transformedPoint3D(x,y,z,yaw,pitch,roll),pitch,1);
+diff(transformedPoint3D(x,y,z,yaw,pitch,roll),roll,1);
+/* [wxMaxima: input   end   ] */
+
+/* [wxMaxima: input   start ] */
+/*Derivatives of the proyected 3D point over the 2D plane*/
+diff(proyected2DPoint(x,y,z),x,1);
+diff(proyected2DPoint(x,y,z),y,1);
+diff(proyected2DPoint(x,y,z),z,1);
+/* [wxMaxima: input   end   ] */
+
+/* Maxima can't load/batch files which end with a comment! */
+"Created with wxMaxima"$

@@ -1,0 +1,8 @@
+%YAML:1.0
+numOptimizationLevels: 4
+blurFilterSize (at each level): [0, 0, 0, 0]
+imageGradientsScalingFactor (at each level): [0.0625, 0.0625,0.0625, 0.0625]
+lambda_optimization_step (at each level): [1,1,1,1]
+max_num_iterations (at each level): [0, 0, 20, 50]
+min_gradient_norm (at each level): [300,300,300,300]
+visualizeIterations: 0
