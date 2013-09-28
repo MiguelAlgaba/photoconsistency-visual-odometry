@@ -2,6 +2,8 @@ project( PHOVO )
 
 cmake_minimum_required( VERSION 2.8 )
 
+set(CMAKE_MODULE_PATH ${PHOVO_SOURCE_DIR}/cmake)
+
 # Set the configuration file
 configure_file( ${PHOVO_SOURCE_DIR}/config.h.in ${PHOVO_SOURCE_DIR}/phovo/include/config.h )
 
@@ -10,6 +12,10 @@ set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PHOVO_BINARY_DIR}/bin )
 
 # OpenCV library
 find_package( OpenCV 2.4.5 REQUIRED )
+
+# Eigen library
+find_package( Eigen3 3.1.3 REQUIRED )
+include_directories( ${Eigen_INCLUDE_DIRS} )
 
 # OpenMP
 option( PHOVO_WITH_OPENMP "Use OpenMP to enable multithreading" OFF )
