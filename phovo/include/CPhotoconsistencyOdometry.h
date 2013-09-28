@@ -37,7 +37,7 @@
 #define ENABLE_OPENMP_MULTITHREADING_WARP_IMAGE 0
 
 #include "opencv2/imgproc/imgproc.hpp"
-#include <eigen3/Eigen/Dense>
+#include "eigen3/Eigen/Dense"
 
 namespace PhotoconsistencyOdometry
 {

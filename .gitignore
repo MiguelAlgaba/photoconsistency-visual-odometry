@@ -1,0 +1,16 @@
+# temporary backup files
+*~
+*.bak
+
+# conflicts git generated files
+*.orig
+
+# binary dir
+*/build/
+
+# qtcreator files
+CMakeLists.txt.user*
+
+# Desktop Service Store
+*.DS_Store
+
