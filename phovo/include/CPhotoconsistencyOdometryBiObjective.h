@@ -48,7 +48,7 @@
 namespace PhotoconsistencyOdometry
 {
 
-namespace BiObjective
+namespace Analytic
 {
 
 /*!This class computes the rigid (6DoF) transformation that best aligns a pair of RGBD frames using a photoconsistency maximization approach.
@@ -638,7 +638,7 @@ public:
     }
 };
 
-} //end namespace BiObjective
+} //end namespace Analytic
 
 } //end namespace PhotoconsistencyOdometry
 
