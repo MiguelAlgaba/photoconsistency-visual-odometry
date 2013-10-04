@@ -1,7 +1,7 @@
 /*
  *  Photoconsistency-Visual-Odometry
  *  Multiscale Photoconsistency Visual Odometry from RGBD Images
- *  Copyright (c) 2012, Miguel Algaba Borrego
+ *  Copyright (c) 2012-2013, Miguel Algaba Borrego
  *
  *  http://code.google.com/p/photoconsistency-visual-odometry/
  *
@@ -39,16 +39,15 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include "eigen3/Eigen/Dense"
 
-namespace PhotoconsistencyOdometry
+#include "Matrix.h"
+
+namespace phovo
 {
 
-void eigenPose(float x,
-           float y,
-           float z,
-           float yaw,
-           float pitch,
-           float roll,
-           Eigen::Matrix4f & pose)
+template< class T >
+void eigenPose( const T x, const T y, const T z,
+                const T yaw, const T pitch, const T roll,
+                Numeric::Matrix44< T > & pose)
 {
     pose(0,0) = cos(yaw) * cos(pitch);
     pose(0,1) = cos(yaw) * sin(pitch) * sin(roll) - sin(yaw) * cos(roll);
@@ -69,25 +68,25 @@ void eigenPose(float x,
     pose(3,1) = 0;
     pose(3,2) = 0;
     pose(3,3) = 1;
-
 }
 
-template <class T>
-void warpImage(cv::Mat & imgGray,
-               cv::Mat & imgDepth,
-               cv::Mat & imgGrayWarped,
-               Eigen::Matrix4f & Rt,
-               Eigen::Matrix3f & cameraMatrix,int level=0)
+template < class PixelType, class FloatType >
+void warpImage( cv::Mat & imgGray,
+                cv::Mat & imgDepth,
+                cv::Mat & imgGrayWarped,
+                Numeric::Matrix44< FloatType > & Rt,
+                Numeric::Matrix33< FloatType > & cameraMatrix,
+                int level=0 )
 {
-    float fx = cameraMatrix(0,0)/pow(2,level);
-    float fy = cameraMatrix(1,1)/pow(2,level);
-    float inv_fx = 1.f/fx;
-    float inv_fy = 1.f/fy;
-    float ox = cameraMatrix(0,2)/pow(2,level);
-    float oy = cameraMatrix(1,2)/pow(2,level);
+    FloatType fx = cameraMatrix(0,0)/pow(2,level);
+    FloatType fy = cameraMatrix(1,1)/pow(2,level);
+    FloatType inv_fx = 1.f/fx;
+    FloatType inv_fy = 1.f/fy;
+    FloatType ox = cameraMatrix(0,2)/pow(2,level);
+    FloatType oy = cameraMatrix(1,2)/pow(2,level);
 
-    Eigen::Vector4f point3D;
-    Eigen::Vector4f transformedPoint3D;
+    Numeric::VectorCol4< FloatType > point3D;
+    Numeric::VectorCol4< FloatType > transformedPoint3D;
     int transformed_r,transformed_c; // 2D coordinates of the transformed pixel(r,c) of frame 1
 
     imgGrayWarped = cv::Mat::zeros(imgGray.rows,imgGray.cols,imgGray.type());
@@ -99,13 +98,13 @@ void warpImage(cv::Mat & imgGray,
     {
         for(int c=0;c<imgGray.cols;c++)
         {
-            if(imgDepth.at<float>(r,c)>0) //If has valid depth value
+            if(imgDepth.at< FloatType >(r,c)>0) //If has valid depth value
             {
                 //Compute the local 3D coordinates of pixel(r,c) of frame 1
-                point3D(2) = imgDepth.at<float>(r,c); //z
-                point3D(0) = (c-ox) * point3D(2) * inv_fx;	   //x
-                point3D(1) = (r-oy) * point3D(2) * inv_fy;	   //y
-                point3D(3) = 1.0;			   //homogeneous coordinate
+                point3D(2) = imgDepth.at< FloatType >(r,c);    //z
+                point3D(0) = (c-ox) * point3D(2) * inv_fx;     //x
+                point3D(1) = (r-oy) * point3D(2) * inv_fy;     //y
+                point3D(3) = 1.0;                              //homogeneous coordinate
 
                 //Transform the 3D point using the transformation matrix Rt
                 transformedPoint3D = Rt * point3D;
@@ -119,7 +118,7 @@ void warpImage(cv::Mat & imgGray,
                 if(transformed_r>=0 && transformed_r < imgGray.rows &
                    transformed_c>=0 && transformed_c < imgGray.cols)
                 {
-                    imgGrayWarped.at<T>(transformed_r,transformed_c)=imgGray.at<T>(r,c);
+                    imgGrayWarped.at< PixelType >(transformed_r,transformed_c)=imgGray.at< PixelType >(r,c);
                 }
             }
         }
@@ -127,25 +126,26 @@ void warpImage(cv::Mat & imgGray,
 }
 
 /*!This abstract class defines the mandatory methods that any derived class must implement to compute the rigid (6DoF) transformation that best aligns a pair of RGBD frames using a photoconsistency maximization approach.*/
+template< class T >
 class CPhotoconsistencyOdometry
 {
 public:
   /*!Sets the 3x3 matrix of (pinhole) camera intrinsic parameters used to obtain the 3D colored point cloud from the RGB and depth images.*/
-  virtual void setCameraMatrix(Eigen::Matrix3f & camMat)=0;
+  virtual void setCameraMatrix( Numeric::Matrix33< T > & camMat)=0;
   /*!Sets the source (Intensity+Depth) frame.*/
   virtual void setSourceFrame(cv::Mat & imgGray,cv::Mat & imgDepth)=0;
   /*!Sets the source (Intensity+Depth) frame.*/
   virtual void setTargetFrame(cv::Mat & imgGray,cv::Mat & imgDepth)=0;
   /*!Initializes the state vector to a certain value. The optimization process uses the initial state vector as the initial estimate.*/
-  virtual void setInitialStateVector(const std::vector<double> & initialStateVector)=0;
+  virtual void setInitialStateVector(const std::vector< T > & initialStateVector)=0;
   /*!Launches the least-squares optimization process to find the configuration of the state vector parameters that maximizes the photoconsistency between the source and target frame.*/
   virtual void optimize()=0;
   /*!Returns the optimal state vector. This method has to be called after calling the optimize() method.*/
-  virtual void getOptimalStateVector(std::vector<double> & optimalStateVector)=0;
+  virtual void getOptimalStateVector(std::vector< T > & optimalStateVector)=0;
   /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the optimize() method.*/
-  virtual void getOptimalRigidTransformationMatrix(Eigen::Matrix4f & optimal_Rt)=0;
+  virtual void getOptimalRigidTransformationMatrix( Numeric::Matrix44< T > & optimal_Rt)=0;
 };
 
-} //end namespace PhotoconsistencyOdometry
+} //end namespace phovo
 
 #endif

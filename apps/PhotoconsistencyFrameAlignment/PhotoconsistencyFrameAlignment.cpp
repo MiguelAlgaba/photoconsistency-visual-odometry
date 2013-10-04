@@ -1,7 +1,7 @@
 /*
  *  Photoconsistency-Visual-Odometry
  *  Multiscale Photoconsistency Visual Odometry from RGBD Images
- *  Copyright (c) 2012, Miguel Algaba Borrego
+ *  Copyright (c) 2012-2013, Miguel Algaba Borrego
  *
  *  http://code.google.com/p/photoconsistency-visual-odometry/
  *
@@ -55,11 +55,15 @@ int main (int argc,char ** argv)
 {
   if(argc<5){printHelp();return -1;}
 
+  typedef float FloatType;
+  typedef phovo::Numeric::Matrix33< FloatType > Matrix33Type;
+  typedef phovo::Numeric::Matrix44< FloatType > Matrix44Type;
+
   //Set the camera parameters
-  Eigen::Matrix3f cameraMatrix; cameraMatrix <<
-                525., 0., 3.1950000000000000e+02,
-                0., 525., 2.3950000000000000e+02,
-                0., 0., 1.;
+  Matrix33Type cameraMatrix;
+  cameraMatrix << 525., 0., 3.1950000000000000e+02,
+                  0., 525., 2.3950000000000000e+02,
+                  0., 0., 1.;
 
   //Load two RGB frames (RGB and depth images)
   cv::Mat imgRGB0 = cv::imread(argv[2]);
@@ -76,17 +80,17 @@ int main (int argc,char ** argv)
 
   //Define the photoconsistency odometry object and set the input parameters
 #if USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 0
-	PhotoconsistencyOdometry::Analytic::CPhotoconsistencyOdometryAnalytic photoconsistencyOdometry;
+  phovo::Analytic::CPhotoconsistencyOdometryAnalytic< FloatType > photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 1
-	PhotoconsistencyOdometry::Ceres::CPhotoconsistencyOdometryCeres photoconsistencyOdometry;
+  phovo::Ceres::CPhotoconsistencyOdometryCeres photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 2
-  PhotoconsistencyOdometry::Analytic::CPhotoconsistencyOdometryBiObjective photoconsistencyOdometry;
+  phovo::Analytic::CPhotoconsistencyOdometryBiObjective photoconsistencyOdometry;
 #endif
 	photoconsistencyOdometry.readConfigurationFile(std::string(argv[1]));
-  photoconsistencyOdometry.setCameraMatrix(cameraMatrix);
+  photoconsistencyOdometry.setCameraMatrix( cameraMatrix );
   photoconsistencyOdometry.setSourceFrame(imgGray0,imgDepth0);
   photoconsistencyOdometry.setTargetFrame(imgGray1,imgDepth1);
-  std::vector<double> stateVector; stateVector.resize(6,0); //x,y,z,yaw,pitch,roll
+  std::vector< FloatType > stateVector; stateVector.resize(6,0); //x,y,z,yaw,pitch,roll
   photoconsistencyOdometry.setInitialStateVector(stateVector);
 
   //Optimize the problem to estimate the rigid transformation
@@ -96,11 +100,11 @@ int main (int argc,char ** argv)
   std::cout << "Time = " << tm.getTimeSec() << " sec." << std::endl;
 
   //Show results
-  Eigen::Matrix4f Rt;
+  Matrix44Type Rt;
   photoconsistencyOdometry.getOptimalRigidTransformationMatrix(Rt);
   std::cout<<"main::Rt eigen:"<<std::endl<<Rt<<std::endl;
   cv::Mat warpedImage;
-  PhotoconsistencyOdometry::warpImage<uint8_t>(imgGray0,imgDepth0,warpedImage,Rt,cameraMatrix);
+  phovo::warpImage<uint8_t>(imgGray0,imgDepth0,warpedImage,Rt,cameraMatrix);
   cv::Mat imgDiff;
   cv::absdiff(imgGray1,warpedImage,imgDiff);
   cv::imshow("main::imgDiff",imgDiff);

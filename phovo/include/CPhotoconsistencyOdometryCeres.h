@@ -1,7 +1,7 @@
 /*
  *  Photoconsistency-Visual-Odometry
  *  Multiscale Photoconsistency Visual Odometry from RGBD Images
- *  Copyright (c) 2012, Miguel Algaba Borrego
+ *  Copyright (c) 2012-2013, Miguel Algaba Borrego
  *
  *  http://code.google.com/p/photoconsistency-visual-odometry/
  *
@@ -48,7 +48,7 @@
 #include "ceres/ceres.h"
 #include "opencv2/highgui/highgui.hpp" //visualize iterations
 
-namespace PhotoconsistencyOdometry
+namespace phovo
 {
 
 namespace Ceres
@@ -486,7 +486,7 @@ public:
 
 } //end namespace Ceres
 
-} //end namespace PhotoconsistencyOdometry
+} //end namespace phovo
 
 #endif
 

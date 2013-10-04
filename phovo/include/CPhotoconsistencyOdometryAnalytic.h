@@ -1,7 +1,7 @@
 /*
  *  Photoconsistency-Visual-Odometry
  *  Multiscale Photoconsistency Visual Odometry from RGBD Images
- *  Copyright (c) 2012, Miguel Algaba Borrego
+ *  Copyright (c) 2012-2013, Miguel Algaba Borrego
  *
  *  http://code.google.com/p/photoconsistency-visual-odometry/
  *
@@ -45,7 +45,7 @@
 #include "opencv2/contrib/contrib.hpp" //TickMeter
 #include <iostream>
 
-namespace PhotoconsistencyOdometry
+namespace phovo
 {
 
 namespace Analytic
@@ -54,7 +54,8 @@ namespace Analytic
 /*!This class computes the rigid (6DoF) transformation that best aligns a pair of RGBD frames using a photoconsistency maximization approach.
 To estimate the rigid transformation, this class implements a coarse to fine approach. Thus, the algorithm starts finding a first pose approximation at
 a low resolution level and uses the estimate to initialize the optimization at greater image scales. Both the residuals and jacobians are computed analytically.*/
-class CPhotoconsistencyOdometryAnalytic : public CPhotoconsistencyOdometry
+template< class T >
+class CPhotoconsistencyOdometryAnalytic : public CPhotoconsistencyOdometry< T >
 {
 
 private:
@@ -62,40 +63,40 @@ private:
     /*!Intensity (gray), depth and gradient image pyramids. Each pyramid has 'numOptimizationLevels' levels.*/
     std::vector<cv::Mat> gray0Pyr,gray1Pyr,depth0Pyr,gray1GradXPyr,gray1GradYPyr;
     /*!Camera matrix (intrinsic parameters).*/
-    Eigen::Matrix3f cameraMatrix;
+    Numeric::Matrix33< T > cameraMatrix;
     /*!Current optimization level. Level 0 corresponds to the higher image resolution.*/
     int optimizationLevel;
     /*!Number of optimization levels.*/
     int numOptimizationLevels;
     /*!Scaling factor to update the state vector (at each level).*/
-    std::vector<float>lambda_optimization_step;
+    std::vector<T>lambda_optimization_step;
     /*!Size (in pixels) of the blur filter (at each level).*/
     std::vector<int> blurFilterSize;
     /*!Scaling factor applied to the image gradients (at each level).*/
-    std::vector<float> imageGradientsScalingFactor;
+    std::vector<T> imageGradientsScalingFactor;
     /*!Maximum number of iterations for the Gauss-Newton algorithm (at each level).*/
     std::vector<int> max_num_iterations;
     /*!Minimum gradient norm of the jacobian (at each level).*/
-    std::vector<float> min_gradient_norm;
+    std::vector<T> min_gradient_norm;
     /*!Enable the visualization of the optimization process (only for debug).*/
     bool visualizeIterations;
     /*!State vector.*/
-    Eigen::Matrix<double,6,1> stateVector; //Parameter vector (x y z yaw pitch roll)
+    Eigen::Matrix< T ,6,1> stateVector; //Parameter vector (x y z yaw pitch roll)
     /*!Gradient of the error function.*/
-    Eigen::Matrix<double,6,1> gradients;
+    Eigen::Matrix< T ,6,1> gradients;
     /*!Current iteration at the current optimization level.*/
     int iter;
     /*!Minimum allowed depth to consider a depth pixel valid.*/
-    float minDepth;
+    T minDepth;
     /*!Maximum allowed depth to consider a depth pixel valid.*/
-    float maxDepth;
+    T maxDepth;
 
     void buildPyramid(cv::Mat & img,std::vector<cv::Mat>& pyramid,int levels,bool applyBlur)
     {
         //Create space for all the images
         pyramid.resize(levels);
 
-        double factor = 1;
+        T factor = 1;
         for(int level=0;level<levels;level++)
         {
             //Create an auxiliar image of factor times the size of the original image
@@ -162,36 +163,36 @@ private:
                                       cv::Mat & target_grayImg,
                                       cv::Mat & target_gradXImg,
                                       cv::Mat & target_gradYImg,
-                                      Eigen::Matrix<double,Eigen::Dynamic,1> & residuals,
-                                      Eigen::Matrix<double,Eigen::Dynamic,6> & jacobians,
+                                      Eigen::Matrix< T,Eigen::Dynamic,1> & residuals,
+                                      Eigen::Matrix< T,Eigen::Dynamic,6> & jacobians,
                                       cv::Mat & warped_source_grayImage)
     {
         int nRows = source_grayImg.rows;
         int nCols = source_grayImg.cols;
 
-        double scaleFactor = 1.0/pow(2,optimizationLevel);
-        double fx = cameraMatrix(0,0)*scaleFactor;
-        double fy = cameraMatrix(1,1)*scaleFactor;
-        double ox = cameraMatrix(0,2)*scaleFactor;
-        double oy = cameraMatrix(1,2)*scaleFactor;
-        float inv_fx = 1.f/fx;
-        float inv_fy = 1.f/fy;
+        T scaleFactor = 1.0/pow(2,optimizationLevel);
+        T fx = cameraMatrix(0,0)*scaleFactor;
+        T fy = cameraMatrix(1,1)*scaleFactor;
+        T ox = cameraMatrix(0,2)*scaleFactor;
+        T oy = cameraMatrix(1,2)*scaleFactor;
+        T inv_fx = 1.f/fx;
+        T inv_fy = 1.f/fy;
 
-        double x = stateVector[0];
-        double y = stateVector[1];
-        double z = stateVector[2];
-        double yaw = stateVector[3];
-        double pitch = stateVector[4];
-        double roll = stateVector[5];
+        T x = stateVector[0];
+        T y = stateVector[1];
+        T z = stateVector[2];
+        T yaw = stateVector[3];
+        T pitch = stateVector[4];
+        T roll = stateVector[5];
 
         //Compute the rigid transformation matrix from the parameters
         Eigen::Matrix4f Rt = Eigen::Matrix4f::Identity();
-        double sin_yaw = sin(yaw);
-        double cos_yaw = cos(yaw);
-        double sin_pitch = sin(pitch);
-        double cos_pitch = cos(pitch);
-        double sin_roll = sin(roll);
-        double cos_roll = cos(roll);
+        T sin_yaw = sin(yaw);
+        T cos_yaw = cos(yaw);
+        T sin_pitch = sin(pitch);
+        T cos_pitch = cos(pitch);
+        T sin_roll = sin(roll);
+        T cos_roll = cos(roll);
         Rt(0,0) = cos_yaw * cos_pitch;
         Rt(0,1) = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
         Rt(0,2) = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
@@ -209,30 +210,30 @@ private:
         Rt(3,2) = 0;
         Rt(3,3) = 1;
 
-        double temp1 = cos(pitch)*sin(roll);
-        double temp2 = cos(pitch)*cos(roll);
-        double temp3 = sin(pitch);
-        double temp4 = (sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw));
-        double temp5 = (sin(pitch)*sin(roll)*cos(yaw)-cos(roll)*sin(yaw));
-        double temp6 = (sin(pitch)*sin(roll)*sin(yaw)+cos(roll)*cos(yaw));
-        double temp7 = (-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw));
-        double temp8 = (sin(roll)*cos(yaw)-sin(pitch)*cos(roll)*sin(yaw));
-        double temp9 = (sin(pitch)*cos(roll)*sin(yaw)-sin(roll)*cos(yaw));
-        double temp10 = cos(pitch)*sin(roll)*cos(yaw);
-        double temp11 = cos(pitch)*cos(yaw)+x;
-        double temp12 = cos(pitch)*cos(roll)*cos(yaw);
-        double temp13 = sin(pitch)*cos(yaw);
-        double temp14 = cos(pitch)*sin(yaw);
-        double temp15 = cos(pitch)*cos(yaw);
-        double temp16 = sin(pitch)*sin(roll);
-        double temp17 = sin(pitch)*cos(roll);
-        double temp18 = cos(pitch)*sin(roll)*sin(yaw);
-        double temp19 = cos(pitch)*cos(roll)*sin(yaw);
-        double temp20 = sin(pitch)*sin(yaw);
-        double temp21 = (cos(roll)*sin(yaw)-sin(pitch)*sin(roll)*cos(yaw));
-        double temp22 = cos(pitch)*cos(roll);
-        double temp23 = cos(pitch)*sin(roll);
-        double temp24 = cos(pitch);
+        T temp1 = cos(pitch)*sin(roll);
+        T temp2 = cos(pitch)*cos(roll);
+        T temp3 = sin(pitch);
+        T temp4 = (sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw));
+        T temp5 = (sin(pitch)*sin(roll)*cos(yaw)-cos(roll)*sin(yaw));
+        T temp6 = (sin(pitch)*sin(roll)*sin(yaw)+cos(roll)*cos(yaw));
+        T temp7 = (-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw));
+        T temp8 = (sin(roll)*cos(yaw)-sin(pitch)*cos(roll)*sin(yaw));
+        T temp9 = (sin(pitch)*cos(roll)*sin(yaw)-sin(roll)*cos(yaw));
+        T temp10 = cos(pitch)*sin(roll)*cos(yaw);
+        T temp11 = cos(pitch)*cos(yaw)+x;
+        T temp12 = cos(pitch)*cos(roll)*cos(yaw);
+        T temp13 = sin(pitch)*cos(yaw);
+        T temp14 = cos(pitch)*sin(yaw);
+        T temp15 = cos(pitch)*cos(yaw);
+        T temp16 = sin(pitch)*sin(roll);
+        T temp17 = sin(pitch)*cos(roll);
+        T temp18 = cos(pitch)*sin(roll)*sin(yaw);
+        T temp19 = cos(pitch)*cos(roll)*sin(yaw);
+        T temp20 = sin(pitch)*sin(yaw);
+        T temp21 = (cos(roll)*sin(yaw)-sin(pitch)*sin(roll)*cos(yaw));
+        T temp22 = cos(pitch)*cos(roll);
+        T temp23 = cos(pitch)*sin(roll);
+        T temp24 = cos(pitch);
 
         #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
         #pragma omp parallel for
@@ -245,23 +246,23 @@ private:
 
                 //Compute the 3D coordinates of the pij of the source frame
                 Eigen::Vector4f point3D;
-                point3D(2)=source_depthImg.at<float>(r,c);
+                point3D(2)=source_depthImg.at<T>(r,c);
                 if(minDepth < point3D(2) && point3D(2) < maxDepth)//Compute the jacobian only for the valid points
                 {
                     point3D(0)=(c - ox) * point3D(2) * inv_fx;
                     point3D(1)=(r - oy) * point3D(2) * inv_fy;
                     point3D(3)=1;
 
-                    double px = point3D(0);
-                    double py = point3D(1);
-                    double pz = point3D(2);
+                    T px = point3D(0);
+                    T py = point3D(1);
+                    T pz = point3D(2);
 
                     //Transform the 3D point using the transformation matrix Rt
                     Eigen::Vector4f  transformedPoint3D = Rt*point3D;
 
                     //Project the 3D point to the 2D plane
-                    double inv_transformedPz = 1.0/transformedPoint3D(2);
-                    double transformed_r,transformed_c; // 2D coordinates of the transformed pixel(r,c) of frame 1
+                    T inv_transformedPz = 1.0/transformedPoint3D(2);
+                    T transformed_r,transformed_c; // 2D coordinates of the transformed pixel(r,c) of frame 1
                     transformed_c = (transformedPoint3D(0) * fx)*inv_transformedPz + ox; //transformed x (2D)
                     transformed_r = (transformedPoint3D(1) * fy)*inv_transformedPz + oy; //transformed y (2D)
                     int transformed_r_int = round(transformed_r);
@@ -273,15 +274,15 @@ private:
                        (transformed_c_int>=0 && transformed_c_int < nCols))
                     {
                         //Obtain the pixel values that will be used to compute the pixel residual
-                        double pixel1; //Intensity value of the pixel(r,c) of the warped frame 1
-                        double pixel2; //Intensity value of the pixel(r,c) of frame 2
-                        pixel1 = source_grayImg.at<float>(r,c);
-                        pixel2 = target_grayImg.at<float>(transformed_r_int,transformed_c_int);
+                        T pixel1; //Intensity value of the pixel(r,c) of the warped frame 1
+                        T pixel2; //Intensity value of the pixel(r,c) of frame 2
+                        pixel1 = source_grayImg.at<T>(r,c);
+                        pixel2 = target_grayImg.at<T>(transformed_r_int,transformed_c_int);
 
                         //Compute the pixel jacobian
-                        Eigen::Matrix<double,2,6> jacobianPrRt;
-                        double temp25 = 1.0/(z+py*temp1+pz*temp2-px*temp3);
-                        double temp26 = temp25*temp25;
+                        Eigen::Matrix<T,2,6> jacobianPrRt;
+                        T temp25 = 1.0/(z+py*temp1+pz*temp2-px*temp3);
+                        T temp26 = temp25*temp25;
 
                             //Derivative with respect to x
                             jacobianPrRt(0,0)=fx*temp25;
@@ -312,10 +313,10 @@ private:
                             -fy*(py*temp22-pz*temp23)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
 
                           //Apply the chain rule to compound the image gradients with the projective+RigidTransform jacobians
-                          Eigen::Matrix<double,1,2> target_imgGradient;
-                          target_imgGradient(0,0)=target_gradXImg.at<float>(i);
-                          target_imgGradient(0,1)=target_gradYImg.at<float>(i);
-                          Eigen::Matrix<double,1,6> jacobian=target_imgGradient*jacobianPrRt;
+                          Eigen::Matrix<T,1,2> target_imgGradient;
+                          target_imgGradient(0,0)=target_gradXImg.at<T>(i);
+                          target_imgGradient(0,1)=target_gradYImg.at<T>(i);
+                          Eigen::Matrix<T,1,6> jacobian=target_imgGradient*jacobianPrRt;
 
                           //Assign the pixel residual and jacobian to its corresponding row
                           #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
@@ -331,7 +332,7 @@ private:
 
                               residuals(nCols*transformed_r_int+transformed_c_int,0) = pixel2 - pixel1;
                               if(visualizeIterations)
-                                warped_source_grayImage.at<float>(transformed_r_int,transformed_c_int) = pixel1;
+                                warped_source_grayImage.at<T>(transformed_r_int,transformed_c_int) = pixel1;
                           }
                     }
                 }
@@ -344,7 +345,7 @@ private:
     {
         bool optimizationFinished = false;
 
-        double gradientNorm = gradients.norm();
+        T gradientNorm = gradients.norm();
 
         TerminationCriteriaType terminationCriteria = NonTerminated;
         if(iter>=max_num_iterations[optimizationLevel])
@@ -399,19 +400,19 @@ public:
     ~CPhotoconsistencyOdometryAnalytic(){};
 
     /*!Sets the minimum depth distance (m) to consider a certain pixel valid.*/
-    void setMinDepth(float minD)
+    void setMinDepth(T minD)
     {
         minDepth = minD;
     }
 
     /*!Sets the maximum depth distance (m) to consider a certain pixel valid.*/
-    void setMaxDepth(float maxD)
+    void setMaxDepth(T maxD)
     {
         maxDepth = maxD;
     }
 
     /*!Sets the 3x3 matrix of (pinhole) camera intrinsic parameters used to obtain the 3D colored point cloud from the RGB and depth images.*/
-    void setCameraMatrix(Eigen::Matrix3f & camMat)
+    void setCameraMatrix( Numeric::Matrix33< T > & camMat )
     {
         cameraMatrix = camMat;
     }
@@ -443,7 +444,7 @@ public:
     }
 
     /*!Initializes the state vector to a certain value. The optimization process uses the initial state vector as the initial estimate.*/
-    void setInitialStateVector(const std::vector<double> & initialStateVector)
+    void setInitialStateVector(const std::vector< T > & initialStateVector)
     {
         stateVector[0] = initialStateVector[0];
         stateVector[1] = initialStateVector[1];
@@ -472,10 +473,10 @@ public:
                 if(visualizeIterations)
                     warped_source_grayImage = cv::Mat::zeros(nRows,nCols,gray0Pyr[optimizationLevel].type());
 
-                Eigen::Matrix<double,Eigen::Dynamic,1> residuals;
-                residuals = Eigen::MatrixXd::Zero(nPoints,1);
-                Eigen::Matrix<double,Eigen::Dynamic,6> jacobians;
-                jacobians = Eigen::MatrixXd::Zero(nPoints,6);
+                Eigen::Matrix<T,Eigen::Dynamic,1> residuals;
+                residuals = Eigen::MatrixXf::Zero(nPoints,1);
+                Eigen::Matrix<T,Eigen::Dynamic,6> jacobians;
+                jacobians = Eigen::MatrixXf::Zero(nPoints,6);
 
                 if(max_num_iterations[optimizationLevel]>0) //compute only if the number of maximum iterations are greater than 0
                 {
@@ -517,7 +518,7 @@ public:
     }
 
     /*!Returns the optimal state vector. This method has to be called after calling the optimize() method.*/
-    void getOptimalStateVector(std::vector<double> & optimalStateVector)
+    void getOptimalStateVector(std::vector< T > & optimalStateVector)
     {
         optimalStateVector[0] = stateVector[0];
         optimalStateVector[1] = stateVector[1];
@@ -528,7 +529,7 @@ public:
     }
 
     /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the optimize() method.*/
-    void getOptimalRigidTransformationMatrix(Eigen::Matrix4f & optimal_Rt)
+    void getOptimalRigidTransformationMatrix( Numeric::Matrix44< T > & optimal_Rt )
     {
         eigenPose(stateVector[0],stateVector[1],stateVector[2],
                   stateVector[3],stateVector[4],stateVector[5],optimal_Rt);
@@ -566,6 +567,6 @@ public:
 
 } //end namespace Analytic
 
-} //end namespace PhotoconsistencyOdometry
+} //end namespace phovo
 
 #endif
