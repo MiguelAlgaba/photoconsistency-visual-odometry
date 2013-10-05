@@ -163,7 +163,6 @@ void BuildDerivativesPyramids( IntensityImageContainerType & imagePyramid,
                                IntensityImageContainerType & derYPyramid)
 {
   //Compute image gradients
-  double scale = 1.0;
   double delta = 0.0;
   int ddepth = m_IntensityPyramid0[0].type();
 
