@@ -392,21 +392,21 @@ bool TestTerminationCriteria()
   if( optimizationFinished )
   {
     #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-    std::cout<<"----------------------------------------"<<std::endl;
-    std::cout<<"Optimization level: "<<optimizationLevel<<std::endl;
-    std::cout<<"Termination criteria: ";
+    std::cout << "----------------------------------------" << std::endl;
+    std::cout << "Optimization level: " << m_OptimizationLevel << std::endl;
+    std::cout << "Termination criteria: ";
     #endif
 
     switch( terminationCriteria )
     {
       case MaxIterationsReached:
         #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-        std::cout<<" Max number of iterations reached ("<<max_num_iterations[optimizationLevel]<<")"<<std::endl;;
+        std::cout << " Max number of iterations reached (" << m_MaxNumIterations[ m_OptimizationLevel ] << ")" << std::endl;;
         #endif
         break;
       case GradientNormLowerThanThreshold:
         #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-        std::cout<<" Gradient norm is lower than threshold ("<<gradient_tolerance[optimizationLevel]<<")"<<std::endl;
+        std::cout << " Gradient norm is lower than threshold (" << m_MinGradientNorms[ m_OptimizationLevel ] << ")" << std::endl;
         #endif
         break;
       default :
@@ -414,9 +414,9 @@ bool TestTerminationCriteria()
     }
 
     #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-    std::cout<<"Number iterations: "<<iter<<std::endl;
-    std::cout<<"gradient norm: "<<gradientNorm<<std::endl;
-    std::cout<<"----------------------------------------"<<std::endl;
+    std::cout << "Number iterations: " << m_Iteration << std::endl;
+    std::cout << "gradient norm: " << gradientNorm << std::endl;
+    std::cout << "----------------------------------------" << std::endl;
     #endif
   }
 
