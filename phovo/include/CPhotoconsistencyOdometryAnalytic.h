@@ -191,7 +191,7 @@ void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
                                    const IntensityImageType & target_gradYImg,
                                    Numeric::RowDynamicMatrixColMajor< CoordinateType, 1 > & residuals,
                                    Numeric::RowDynamicMatrixColMajor< CoordinateType, 6 > & jacobians,
-                                   IntensityImageType & warped_source_grayImage)
+                                   IntensityImageType & warped_source_grayImage) const
 {
   int nRows = source_grayImg.rows;
   int nCols = source_grayImg.cols;
@@ -303,7 +303,7 @@ void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
           CoordinateType pixel2 = target_grayImg( transformed_r_int, transformed_c_int ); //Intensity value of the pixel(r,c) of frame 2
 
           //Compute the pixel jacobian
-          Eigen::Matrix<CoordinateType,2,6> jacobianPrRt;
+          Numeric::FixedMatrixRowMajor< CoordinateType, 2, 6 > jacobianPrRt;
           CoordinateType temp25 = 1.0/(z+py*temp1+pz*temp2-px*temp3);
           CoordinateType temp26 = temp25*temp25;
 
@@ -336,10 +336,10 @@ void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
                               -fy*(py*temp22-pz*temp23)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
 
           //Apply the chain rule to compound the image gradients with the projective+RigidTransform jacobians
-          Eigen::Matrix<CoordinateType,1,2> target_imgGradient;
-          target_imgGradient(0,0) = target_gradXImg(i);
-          target_imgGradient(0,1) = target_gradYImg(i);
-          Eigen::Matrix<CoordinateType,1,6> jacobian = target_imgGradient*jacobianPrRt;
+          Numeric::FixedRowVector< CoordinateType, 2 > target_imgGradient;
+          target_imgGradient(0) = target_gradXImg(i);
+          target_imgGradient(1) = target_gradYImg(i);
+          Numeric::FixedRowVector< CoordinateType, 6 > jacobian = target_imgGradient*jacobianPrRt;
 
           //Assign the pixel residual and jacobian to its corresponding row
           #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
@@ -370,7 +370,7 @@ enum TerminationCriteriaType
   GradientNormLowerThanThreshold = 1
 };
 
-bool TestTerminationCriteria()
+bool TestTerminationCriteria() const
 {
   bool optimizationFinished = false;
 
