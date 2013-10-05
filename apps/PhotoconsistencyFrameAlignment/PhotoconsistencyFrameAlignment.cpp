@@ -55,60 +55,61 @@ int main (int argc,char ** argv)
 {
   if(argc<5){printHelp();return -1;}
 
-  typedef float FloatType;
-  typedef phovo::Numeric::Matrix33< FloatType > Matrix33Type;
-  typedef phovo::Numeric::Matrix44< FloatType > Matrix44Type;
+  typedef float CoordinateType;
+  typedef phovo::Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
+  typedef phovo::Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
+  typedef phovo::Numeric::VectorCol6< CoordinateType >       Vector6Type;
+
+  typedef unsigned char PixelType;
+  typedef cv::Mat_< PixelType >      IntensityImageType;
+  typedef cv::Mat_< CoordinateType > DepthImageType;
 
   //Set the camera parameters
-  Matrix33Type cameraMatrix;
-  cameraMatrix << 525., 0., 3.1950000000000000e+02,
-                  0., 525., 2.3950000000000000e+02,
-                  0., 0., 1.;
+  Matrix33Type intrinsicMatrix;
+  intrinsicMatrix << 525., 0., 319.5,
+                     0., 525., 239.5,
+                     0., 0., 1.;
 
   //Load two RGB frames (RGB and depth images)
-  cv::Mat imgRGB0 = cv::imread(argv[2]);
-  cv::Mat imgGray0;
-  cv::cvtColor( imgRGB0, imgGray0, CV_BGR2GRAY );
-  cv::Mat imgDepth0 = cv::imread(argv[3],-1);
-  imgDepth0.convertTo(imgDepth0, CV_32FC1, 1./1000 );
+  IntensityImageType imgGray0 = cv::imread(argv[2],0);
+  DepthImageType imgDepth0 = cv::imread(argv[3],-1);
+  imgDepth0 = imgDepth0 * 1. / 1000.; // convert the depth image to meters
 
-  cv::Mat imgRGB1 = cv::imread(argv[4]);
-  cv::Mat imgGray1;
-  cv::cvtColor( imgRGB1, imgGray1, CV_BGR2GRAY );
-  cv::Mat imgDepth1 = cv::imread(argv[5],-1);
-  imgDepth1.convertTo(imgDepth1, CV_32FC1, 1./1000 );
+  IntensityImageType imgGray1 = cv::imread(argv[4],0);
+  DepthImageType imgDepth1 = cv::imread(argv[5],-1);
+  imgDepth1 = imgDepth1 * 1. / 1000.; // convert the depth image to meters
 
   //Define the photoconsistency odometry object and set the input parameters
 #if USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 0
-  phovo::Analytic::CPhotoconsistencyOdometryAnalytic< FloatType > photoconsistencyOdometry;
+  phovo::Analytic::CPhotoconsistencyOdometryAnalytic< CoordinateType > photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 1
   phovo::Ceres::CPhotoconsistencyOdometryCeres photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 2
   phovo::Analytic::CPhotoconsistencyOdometryBiObjective photoconsistencyOdometry;
 #endif
-	photoconsistencyOdometry.readConfigurationFile(std::string(argv[1]));
-  photoconsistencyOdometry.setCameraMatrix( cameraMatrix );
-  photoconsistencyOdometry.setSourceFrame(imgGray0,imgDepth0);
-  photoconsistencyOdometry.setTargetFrame(imgGray1,imgDepth1);
-  std::vector< FloatType > stateVector; stateVector.resize(6,0); //x,y,z,yaw,pitch,roll
-  photoconsistencyOdometry.setInitialStateVector(stateVector);
+  Vector6Type stateVector;
+  stateVector << 0., 0., 0., 0., 0., 0.; //x,y,z,yaw,pitch,roll
+  photoconsistencyOdometry.ReadConfigurationFile( std::string( argv[1] ) );
+  photoconsistencyOdometry.SetIntrinsicMatrix( intrinsicMatrix );
+  photoconsistencyOdometry.SetSourceFrame( imgGray0, imgDepth0 );
+  photoconsistencyOdometry.SetTargetFrame( imgGray1, imgDepth1 );
+  photoconsistencyOdometry.SetInitialStateVector( stateVector );
 
   //Optimize the problem to estimate the rigid transformation
   cv::TickMeter tm;tm.start();
-  photoconsistencyOdometry.optimize();
+  photoconsistencyOdometry.Optimize();
   tm.stop();
   std::cout << "Time = " << tm.getTimeSec() << " sec." << std::endl;
 
   //Show results
-  Matrix44Type Rt;
-  photoconsistencyOdometry.getOptimalRigidTransformationMatrix(Rt);
-  std::cout<<"main::Rt eigen:"<<std::endl<<Rt<<std::endl;
-  cv::Mat warpedImage;
-  phovo::warpImage<uint8_t>(imgGray0,imgDepth0,warpedImage,Rt,cameraMatrix);
-  cv::Mat imgDiff;
-  cv::absdiff(imgGray1,warpedImage,imgDiff);
-  cv::imshow("main::imgDiff",imgDiff);
-  cv::waitKey(0);
+  Matrix44Type Rt = photoconsistencyOdometry.GetOptimalRigidTransformationMatrix();
+  std::cout << "main::Rt eigen:" << std::endl << Rt << std::endl;
+  IntensityImageType warpedImage;
+  phovo::warpImage< PixelType, CoordinateType >( imgGray0, imgDepth0, warpedImage, Rt, intrinsicMatrix );
+  IntensityImageType imgDiff;
+  cv::absdiff( imgGray1, warpedImage, imgDiff );
+  cv::imshow( "main::imgDiff", imgDiff );
+  cv::waitKey( 0 );
 
 	return 0;
 }

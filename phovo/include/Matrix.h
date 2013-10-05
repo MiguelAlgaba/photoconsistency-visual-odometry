@@ -310,9 +310,6 @@ public:
   }
 };
 
-template< class T >
-using Matrix44 = Matrix44RowMajor< T >;
-
 // --- 3x3 matrix
 template< class T >
 class Matrix33RowMajor :
@@ -355,9 +352,6 @@ public:
     return *this;
   }
 };
-
-template< class T >
-using Matrix33 = Matrix33RowMajor< T >;
 
 // --- 6-dimensional vector
 template< class T >

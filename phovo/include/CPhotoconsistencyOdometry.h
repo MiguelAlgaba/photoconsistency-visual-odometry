@@ -47,103 +47,133 @@ namespace phovo
 template< class T >
 void eigenPose( const T x, const T y, const T z,
                 const T yaw, const T pitch, const T roll,
-                Numeric::Matrix44< T > & pose)
+                Numeric::Matrix44RowMajor< T > & pose)
 {
-    pose(0,0) = cos(yaw) * cos(pitch);
-    pose(0,1) = cos(yaw) * sin(pitch) * sin(roll) - sin(yaw) * cos(roll);
-    pose(0,2) = cos(yaw) * sin(pitch) * cos(roll) + sin(yaw) * sin(roll);
-    pose(0,3) = x;
+  pose(0,0) = cos(yaw) * cos(pitch);
+  pose(0,1) = cos(yaw) * sin(pitch) * sin(roll) - sin(yaw) * cos(roll);
+  pose(0,2) = cos(yaw) * sin(pitch) * cos(roll) + sin(yaw) * sin(roll);
+  pose(0,3) = x;
 
-    pose(1,0) = sin(yaw) * cos(pitch);
-    pose(1,1) = sin(yaw) * sin(pitch) * sin(roll) + cos(yaw) * cos(roll);
-    pose(1,2) = sin(yaw) * sin(pitch) * cos(roll) - cos(yaw) * sin(roll);
-    pose(1,3) = y;
+  pose(1,0) = sin(yaw) * cos(pitch);
+  pose(1,1) = sin(yaw) * sin(pitch) * sin(roll) + cos(yaw) * cos(roll);
+  pose(1,2) = sin(yaw) * sin(pitch) * cos(roll) - cos(yaw) * sin(roll);
+  pose(1,3) = y;
 
-    pose(2,0) = -sin(pitch);
-    pose(2,1) = cos(pitch) * sin(roll);
-    pose(2,2) = cos(pitch) * cos(roll);
-    pose(2,3) = z;
+  pose(2,0) = -sin(pitch);
+  pose(2,1) = cos(pitch) * sin(roll);
+  pose(2,2) = cos(pitch) * cos(roll);
+  pose(2,3) = z;
 
-    pose(3,0) = 0;
-    pose(3,1) = 0;
-    pose(3,2) = 0;
-    pose(3,3) = 1;
+  pose(3,0) = 0;
+  pose(3,1) = 0;
+  pose(3,2) = 0;
+  pose(3,3) = 1;
 }
 
-template < class PixelType, class FloatType >
-void warpImage( cv::Mat & imgGray,
-                cv::Mat & imgDepth,
-                cv::Mat & imgGrayWarped,
-                Numeric::Matrix44< FloatType > & Rt,
-                Numeric::Matrix33< FloatType > & cameraMatrix,
-                int level=0 )
+template< class TPixel, class TCoordinate >
+void warpImage( const cv::Mat_< TPixel > & intensityImage,
+                const cv::Mat_< TCoordinate > & depthImage,
+                cv::Mat_< TPixel > & warpedIntensityImage,
+                const Numeric::Matrix44RowMajor< TCoordinate > & Rt,
+                const Numeric::Matrix33RowMajor< TCoordinate > & intrinsicMatrix,
+                const int level = 0 )
 {
-    FloatType fx = cameraMatrix(0,0)/pow(2,level);
-    FloatType fy = cameraMatrix(1,1)/pow(2,level);
-    FloatType inv_fx = 1.f/fx;
-    FloatType inv_fy = 1.f/fy;
-    FloatType ox = cameraMatrix(0,2)/pow(2,level);
-    FloatType oy = cameraMatrix(1,2)/pow(2,level);
+  typedef TPixel                PixelType;
+  typedef cv::Mat_< PixelType > IntensityImageType;
 
-    Numeric::VectorCol4< FloatType > point3D;
-    Numeric::VectorCol4< FloatType > transformedPoint3D;
-    int transformed_r,transformed_c; // 2D coordinates of the transformed pixel(r,c) of frame 1
+  typedef TCoordinate                           CoordinateType;
+  typedef Numeric::VectorCol4< CoordinateType > Vector4Type;
 
-    imgGrayWarped = cv::Mat::zeros(imgGray.rows,imgGray.cols,imgGray.type());
+  CoordinateType fx = intrinsicMatrix(0,0)/pow(2,level);
+  CoordinateType fy = intrinsicMatrix(1,1)/pow(2,level);
+  CoordinateType inv_fx = 1.f/fx;
+  CoordinateType inv_fy = 1.f/fy;
+  CoordinateType ox = intrinsicMatrix(0,2)/pow(2,level);
+  CoordinateType oy = intrinsicMatrix(1,2)/pow(2,level);
 
-    #if ENABLE_OPENMP_MULTITHREADING_WARP_IMAGE
-    #pragma omp parallel for private(point3D,transformedPoint3D,transformed_r,transformed_c)
-    #endif
-    for(int r=0;r<imgGray.rows;r++)
+  Vector4Type point3D;
+  Vector4Type transformedPoint3D;
+  int transformed_r,transformed_c; // 2D coordinates of the transformed pixel(r,c) of frame 1
+
+  warpedIntensityImage = cv::Mat_< PixelType >::zeros( intensityImage.rows, intensityImage.cols );
+
+  #if ENABLE_OPENMP_MULTITHREADING_WARP_IMAGE
+  #pragma omp parallel for private( point3D, transformedPoint3D, transformed_r, transformed_c )
+  #endif
+  for( int r=0; r<intensityImage.rows; r++)
+  {
+    for( int c=0; c<intensityImage.cols; c++)
     {
-        for(int c=0;c<imgGray.cols;c++)
+      if( depthImage(r,c)>0 ) //If has valid depth value
+      {
+        //Compute the local 3D coordinates of pixel(r,c) of frame 1
+        point3D(2) = depthImage(r,c);              //z
+        point3D(0) = (c-ox) * point3D(2) * inv_fx; //x
+        point3D(1) = (r-oy) * point3D(2) * inv_fy; //y
+        point3D(3) = 1.0;                          //homogeneous coordinate
+
+        //Transform the 3D point using the transformation matrix Rt
+        transformedPoint3D = Rt * point3D;
+
+        //Project the 3D point to the 2D plane
+        transformed_c = static_cast< int >( ( ( transformedPoint3D(0) * fx ) /
+                                              transformedPoint3D(2) ) + ox ); //transformed x (2D)
+        transformed_r = static_cast< int >( ( ( transformedPoint3D(1) * fy ) /
+                                              transformedPoint3D(2) ) + oy ); //transformed y (2D)
+
+        //Asign the intensity value to the warped image and compute the difference between the transformed
+        //pixel of frame 1 and the corresponding pixel of frame 2. Compute the error function
+        if( transformed_r >= 0 && transformed_r < intensityImage.rows &
+            transformed_c >= 0 && transformed_c < intensityImage.cols)
         {
-            if(imgDepth.at< FloatType >(r,c)>0) //If has valid depth value
-            {
-                //Compute the local 3D coordinates of pixel(r,c) of frame 1
-                point3D(2) = imgDepth.at< FloatType >(r,c);    //z
-                point3D(0) = (c-ox) * point3D(2) * inv_fx;     //x
-                point3D(1) = (r-oy) * point3D(2) * inv_fy;     //y
-                point3D(3) = 1.0;                              //homogeneous coordinate
-
-                //Transform the 3D point using the transformation matrix Rt
-                transformedPoint3D = Rt * point3D;
-
-                //Project the 3D point to the 2D plane
-                transformed_c = ((transformedPoint3D(0) * fx) / transformedPoint3D(2)) + ox; //transformed x (2D)
-                transformed_r = ((transformedPoint3D(1) * fy) / transformedPoint3D(2)) + oy; //transformed y (2D)
-
-                //Asign the intensity value to the warped image and compute the difference between the transformed
-                //pixel of frame 1 and the corresponding pixel of frame 2. Compute the error function
-                if(transformed_r>=0 && transformed_r < imgGray.rows &
-                   transformed_c>=0 && transformed_c < imgGray.cols)
-                {
-                    imgGrayWarped.at< PixelType >(transformed_r,transformed_c)=imgGray.at< PixelType >(r,c);
-                }
-            }
+          warpedIntensityImage( transformed_r, transformed_c ) = intensityImage( r, c );
         }
+      }
     }
+  }
 }
 
 /*!This abstract class defines the mandatory methods that any derived class must implement to compute the rigid (6DoF) transformation that best aligns a pair of RGBD frames using a photoconsistency maximization approach.*/
-template< class T >
+template< class TCoordinate >
 class CPhotoconsistencyOdometry
 {
 public:
-  /*!Sets the 3x3 matrix of (pinhole) camera intrinsic parameters used to obtain the 3D colored point cloud from the RGB and depth images.*/
-  virtual void setCameraMatrix( Numeric::Matrix33< T > & camMat)=0;
+  typedef TCoordinate                CoordinateType;
+  typedef cv::Mat_< CoordinateType > IntensityImageType;
+  typedef cv::Mat_< CoordinateType > DepthImageType;
+
+  typedef Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
+  typedef Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
+  typedef Numeric::VectorCol6< CoordinateType >       Vector6Type;
+  typedef Numeric::VectorCol4< CoordinateType >       Vector4Type;
+
+  /*!Sets the 3x3 intrinsic pinhole matrix.*/
+  virtual void SetIntrinsicMatrix( const Matrix33Type & intrinsicMatrix ) = 0;
+
   /*!Sets the source (Intensity+Depth) frame.*/
-  virtual void setSourceFrame(cv::Mat & imgGray,cv::Mat & imgDepth)=0;
+  virtual void SetSourceFrame( const IntensityImageType & intensityImage,
+                               const DepthImageType & depthImage ) = 0;
+
   /*!Sets the source (Intensity+Depth) frame.*/
-  virtual void setTargetFrame(cv::Mat & imgGray,cv::Mat & imgDepth)=0;
-  /*!Initializes the state vector to a certain value. The optimization process uses the initial state vector as the initial estimate.*/
-  virtual void setInitialStateVector(const std::vector< T > & initialStateVector)=0;
-  /*!Launches the least-squares optimization process to find the configuration of the state vector parameters that maximizes the photoconsistency between the source and target frame.*/
-  virtual void optimize()=0;
-  /*!Returns the optimal state vector. This method has to be called after calling the optimize() method.*/
-  virtual void getOptimalStateVector(std::vector< T > & optimalStateVector)=0;
-  /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the optimize() method.*/
-  virtual void getOptimalRigidTransformationMatrix( Numeric::Matrix44< T > & optimal_Rt)=0;
+  virtual void SetTargetFrame( const IntensityImageType & intensityImage,
+                               const DepthImageType & depthImage ) = 0;
+
+  /*!Initializes the state vector to a certain value. The optimization process uses
+   *the initial state vector as the initial estimate.*/
+  virtual void SetInitialStateVector( const Vector6Type & initialStateVector ) = 0;
+
+  /*!Launches the least-squares optimization process to find the configuration of the
+   *state vector parameters that maximizes the photoconsistency between the source and
+   *target frame.*/
+  virtual void Optimize() = 0;
+
+  /*!Returns the optimal state vector. This method has to be called after calling the
+   *Optimize() method.*/
+  virtual Vector6Type GetOptimalStateVector() const = 0;
+
+  /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame.
+   *This method has to be called after calling the Optimize() method.*/
+  virtual Matrix44Type GetOptimalRigidTransformationMatrix() const = 0;
 };
 
 } //end namespace phovo

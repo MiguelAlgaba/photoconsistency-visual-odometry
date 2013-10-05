@@ -54,515 +54,549 @@ namespace Analytic
 /*!This class computes the rigid (6DoF) transformation that best aligns a pair of RGBD frames using a photoconsistency maximization approach.
 To estimate the rigid transformation, this class implements a coarse to fine approach. Thus, the algorithm starts finding a first pose approximation at
 a low resolution level and uses the estimate to initialize the optimization at greater image scales. Both the residuals and jacobians are computed analytically.*/
-template< class T >
-class CPhotoconsistencyOdometryAnalytic : public CPhotoconsistencyOdometry< T >
+template< class TCoordinate >
+class CPhotoconsistencyOdometryAnalytic :
+    public CPhotoconsistencyOdometry< TCoordinate >
 {
+public:
+  typedef CPhotoconsistencyOdometry< TCoordinate > Superclass;
+
+  typedef typename Superclass::CoordinateType     CoordinateType;
+  typedef typename Superclass::IntensityImageType IntensityImageType;
+  typedef typename Superclass::DepthImageType     DepthImageType;
+  typedef typename Superclass::Matrix33Type       Matrix33Type;
+  typedef typename Superclass::Matrix44Type       Matrix44Type;
+  typedef typename Superclass::Vector6Type        Vector6Type;
+  typedef typename Superclass::Vector4Type        Vector4Type;
 
 private:
+  typedef std::vector< IntensityImageType > IntensityImageContainerType;
+  typedef std::vector< DepthImageType >     DepthImageContainerType;
+  typedef std::vector< CoordinateType >     CoordinateContainerType;
+  typedef std::vector< int >                IntegerContainerType;
 
-    /*!Intensity (gray), depth and gradient image pyramids. Each pyramid has 'numOptimizationLevels' levels.*/
-    std::vector<cv::Mat> gray0Pyr,gray1Pyr,depth0Pyr,gray1GradXPyr,gray1GradYPyr;
-    /*!Camera matrix (intrinsic parameters).*/
-    Numeric::Matrix33< T > cameraMatrix;
-    /*!Current optimization level. Level 0 corresponds to the higher image resolution.*/
-    int optimizationLevel;
-    /*!Number of optimization levels.*/
-    int numOptimizationLevels;
-    /*!Scaling factor to update the state vector (at each level).*/
-    std::vector<T>lambda_optimization_step;
-    /*!Size (in pixels) of the blur filter (at each level).*/
-    std::vector<int> blurFilterSize;
-    /*!Scaling factor applied to the image gradients (at each level).*/
-    std::vector<T> imageGradientsScalingFactor;
-    /*!Maximum number of iterations for the Gauss-Newton algorithm (at each level).*/
-    std::vector<int> max_num_iterations;
-    /*!Minimum gradient norm of the jacobian (at each level).*/
-    std::vector<T> min_gradient_norm;
-    /*!Enable the visualization of the optimization process (only for debug).*/
-    bool visualizeIterations;
-    /*!State vector.*/
-    Eigen::Matrix< T ,6,1> stateVector; //Parameter vector (x y z yaw pitch roll)
-    /*!Gradient of the error function.*/
-    Eigen::Matrix< T ,6,1> gradients;
-    /*!Current iteration at the current optimization level.*/
-    int iter;
-    /*!Minimum allowed depth to consider a depth pixel valid.*/
-    T minDepth;
-    /*!Maximum allowed depth to consider a depth pixel valid.*/
-    T maxDepth;
+  /*!Intensity (gray), depth and gradient image pyramids. Each pyramid has 'numOptimizationLevels' levels.*/
+  IntensityImageContainerType m_IntensityPyramid0;
+  IntensityImageContainerType m_IntensityPyramid1;
+  DepthImageContainerType     m_DepthPyramid0;
+  DepthImageContainerType     m_DepthPyramid1;
+  IntensityImageContainerType m_IntensityGradientXPyramid1;
+  IntensityImageContainerType m_IntensityGradientYPyramid1;
+  /*!Camera matrix (intrinsic parameters).*/
+  Matrix33Type m_IntrinsicMatrix;
+  /*!Current optimization level. Level 0 corresponds to the higher image resolution.*/
+  int m_OptimizationLevel;
+  /*!Number of optimization levels.*/
+  int m_NumOptimizationLevels;
+  /*!Scaling factor to update the state vector (at each level).*/
+  CoordinateContainerType m_LambdaOptimizationSteps;
+  /*!Size (in pixels) of the blur filter (at each level).*/
+  IntegerContainerType m_BlurFilterSizes;
+  /*!Scaling factor applied to the image gradients (at each level).*/
+  CoordinateContainerType m_ImageGradientsScalingFactors;
+  /*!Maximum number of iterations for the Gauss-Newton algorithm (at each level).*/
+  IntegerContainerType m_MaxNumIterations;
+  /*!Minimum gradient norm of the jacobian (at each level).*/
+  CoordinateContainerType m_MinGradientNorms;
+  /*!Enable the visualization of the optimization process (only for debug).*/
+  bool m_VisualizeIterations;
+  /*!State vector.*/
+  Vector6Type m_StateVector; //Parameter vector (x y z yaw pitch roll)
+  /*!Gradient of the error function.*/
+  Vector6Type m_Gradients;
+  /*!Current iteration at the current optimization level.*/
+  int m_Iteration;
+  /*!Minimum allowed depth to consider a depth pixel valid.*/
+  CoordinateType m_MinDepth;
+  /*!Maximum allowed depth to consider a depth pixel valid.*/
+  CoordinateType m_MaxDepth;
 
-    void buildPyramid(cv::Mat & img,std::vector<cv::Mat>& pyramid,int levels,bool applyBlur)
+  void BuildPyramid( const IntensityImageType & img,
+                     IntensityImageContainerType & pyramid,
+                     const int levels, const bool applyBlur )
+{
+  //Create space for all the images
+  pyramid.resize( levels );
+
+  CoordinateType factor = 1;
+  for( int level=0; level<levels; level++ )
+  {
+    //Create an auxiliar image of factor times the size of the original image
+    IntensityImageType imgAux;
+    if( level!=0 )
     {
-        //Create space for all the images
-        pyramid.resize(levels);
-
-        T factor = 1;
-        for(int level=0;level<levels;level++)
-        {
-            //Create an auxiliar image of factor times the size of the original image
-            cv::Mat imgAux;
-            if(level!=0)
-            {
-                cv::resize(img,imgAux,cv::Size(0,0),factor,factor);
-            }
-            else
-            {
-                imgAux = img;
-            }
-
-            //Blur the resized image with different filter size depending on the current pyramid level
-            if(applyBlur)
-            {
-                #if ENABLE_GAUSSIAN_BLUR
-                if(blurFilterSize[level]>0)
-                {
-                    cv::GaussianBlur(imgAux,imgAux,cv::Size(blurFilterSize[level],blurFilterSize[level]),3);
-                    cv::GaussianBlur(imgAux,imgAux,cv::Size(blurFilterSize[level],blurFilterSize[level]),3);
-                }
-                #elif ENABLE_BOX_FILTER_BLUR
-                if(blurFilterSize[level]>0)
-                {
-                    cv::blur(imgAux,imgAux,cv::Size(blurFilterSize[level],blurFilterSize[level]));
-                    cv::blur(imgAux,imgAux,cv::Size(blurFilterSize[level],blurFilterSize[level]));
-                }
-                #endif
-            }
-
-            //Assign the resized image to the current level of the pyramid
-            pyramid[level]=imgAux;
-
-            factor = factor/2;
-        }
+      cv::resize( img, imgAux, cv::Size(0,0), factor, factor );
+    }
+    else
+    {
+      imgAux = img;
     }
 
-    void buildDerivativesPyramids(std::vector<cv::Mat>& imagePyramid,std::vector<cv::Mat>& derXPyramid,std::vector<cv::Mat>& derYPyramid)
+    //Blur the resized image with different filter size depending on the current pyramid level
+    if( applyBlur )
     {
-        //Compute image gradients
-        int scale = 1;
-        int delta = 0;
-        int ddepth = CV_32FC1;
-
-        //Create space for all the derivatives images
-        derXPyramid.resize(imagePyramid.size());
-        derYPyramid.resize(imagePyramid.size());
-
-        for(int level=0;level<imagePyramid.size();level++)
-        {
-            // Compute the gradient in x
-            cv::Mat imgGray1_grad_x;
-            cv::Scharr( imagePyramid[level], derXPyramid[level], ddepth, 1, 0, imageGradientsScalingFactor[level], delta, cv::BORDER_DEFAULT );
-
-            // Compute the gradient in y
-            cv::Mat imgGray1_grad_y;
-            cv::Scharr( imagePyramid[level], derYPyramid[level], ddepth, 0, 1, imageGradientsScalingFactor[level], delta, cv::BORDER_DEFAULT );
-        }
+      int blurFilterSize = m_BlurFilterSizes[level];
+      #if ENABLE_GAUSSIAN_BLUR
+      if( blurFilterSize>0 )
+      {
+        cv::GaussianBlur( imgAux, imgAux, cv::Size( blurFilterSize, blurFilterSize ), 3 );
+        cv::GaussianBlur( imgAux, imgAux, cv::Size( blurFilterSize, blurFilterSize ), 3 );
+      }
+      #elif ENABLE_BOX_FILTER_BLUR
+      if( blurFilterSize>0 )
+      {
+        cv::blur( imgAux, imgAux, cv::Size( blurFilterSize, blurFilterSize ) );
+        cv::blur( imgAux, imgAux, cv::Size( blurFilterSize, blurFilterSize ) );
+      }
+      #endif
     }
 
-    void computeResidualsAndJacobians(cv::Mat & source_grayImg,
-                                      cv::Mat & source_depthImg,
-                                      cv::Mat & target_grayImg,
-                                      cv::Mat & target_gradXImg,
-                                      cv::Mat & target_gradYImg,
-                                      Eigen::Matrix< T,Eigen::Dynamic,1> & residuals,
-                                      Eigen::Matrix< T,Eigen::Dynamic,6> & jacobians,
-                                      cv::Mat & warped_source_grayImage)
+    //Assign the resized image to the current level of the pyramid
+    pyramid[level] = imgAux;
+
+    factor = factor/2;
+  }
+}
+
+void BuildDerivativesPyramids( IntensityImageContainerType & imagePyramid,
+                               IntensityImageContainerType & derXPyramid,
+                               IntensityImageContainerType & derYPyramid)
+{
+  //Compute image gradients
+  double scale = 1.0;
+  double delta = 0.0;
+  int ddepth = m_IntensityPyramid0[0].type();
+
+  //Create space for all the derivatives images
+  derXPyramid.resize(imagePyramid.size());
+  derYPyramid.resize(imagePyramid.size());
+
+  for(int level=0;level<imagePyramid.size();level++)
+  {
+    // Compute the gradient in x
+    cv::Mat imgGray1_grad_x;
+    cv::Scharr( imagePyramid[level], derXPyramid[level], ddepth, 1, 0,
+                m_ImageGradientsScalingFactors[level], delta, cv::BORDER_DEFAULT );
+
+    // Compute the gradient in y
+    cv::Mat imgGray1_grad_y;
+    cv::Scharr( imagePyramid[level], derYPyramid[level],ddepth, 0, 1,
+                m_ImageGradientsScalingFactors[level], delta, cv::BORDER_DEFAULT );
+  }
+}
+
+void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
+                                   const DepthImageType & source_depthImg,
+                                   const IntensityImageType & target_grayImg,
+                                   const IntensityImageType & target_gradXImg,
+                                   const IntensityImageType & target_gradYImg,
+                                   Numeric::RowDynamicMatrixColMajor< CoordinateType, 1 > & residuals,
+                                   Numeric::RowDynamicMatrixColMajor< CoordinateType, 6 > & jacobians,
+                                   //Eigen::Matrix<T,Eigen::Dynamic,1> & residuals,
+                                   //Eigen::Matrix<T,Eigen::Dynamic,6> & jacobians,
+                                   IntensityImageType & warped_source_grayImage)
+{
+  int nRows = source_grayImg.rows;
+  int nCols = source_grayImg.cols;
+
+  CoordinateType scaleFactor = 1.0/pow(2,m_OptimizationLevel);
+  CoordinateType fx = m_IntrinsicMatrix(0,0)*scaleFactor;
+  CoordinateType fy = m_IntrinsicMatrix(1,1)*scaleFactor;
+  CoordinateType ox = m_IntrinsicMatrix(0,2)*scaleFactor;
+  CoordinateType oy = m_IntrinsicMatrix(1,2)*scaleFactor;
+  CoordinateType inv_fx = 1.f/fx;
+  CoordinateType inv_fy = 1.f/fy;
+
+  CoordinateType x = m_StateVector(0);
+  CoordinateType y = m_StateVector(1);
+  CoordinateType z = m_StateVector(2);
+  CoordinateType yaw = m_StateVector(3);
+  CoordinateType pitch = m_StateVector(4);
+  CoordinateType roll = m_StateVector(5);
+
+  //Compute the rigid transformation matrix from the parameters
+  Matrix44Type Rt = Matrix44Type::Identity();
+  CoordinateType sin_yaw = sin(yaw);
+  CoordinateType cos_yaw = cos(yaw);
+  CoordinateType sin_pitch = sin(pitch);
+  CoordinateType cos_pitch = cos(pitch);
+  CoordinateType sin_roll = sin(roll);
+  CoordinateType cos_roll = cos(roll);
+  Rt(0,0) = cos_yaw * cos_pitch;
+  Rt(0,1) = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
+  Rt(0,2) = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
+  Rt(0,3) = x;
+  Rt(1,0) = sin_yaw * cos_pitch;
+  Rt(1,1) = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
+  Rt(1,2) = sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll;
+  Rt(1,3) = y;
+  Rt(2,0) = -sin_pitch;
+  Rt(2,1) = cos_pitch * sin_roll;
+  Rt(2,2) = cos_pitch * cos_roll;
+  Rt(2,3) = z;
+  Rt(3,0) = 0.0;
+  Rt(3,1) = 0.0;
+  Rt(3,2) = 0.0;
+  Rt(3,3) = 1.0;
+
+  CoordinateType temp1 = cos(pitch)*sin(roll);
+  CoordinateType temp2 = cos(pitch)*cos(roll);
+  CoordinateType temp3 = sin(pitch);
+  CoordinateType temp4 = (sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw));
+  CoordinateType temp5 = (sin(pitch)*sin(roll)*cos(yaw)-cos(roll)*sin(yaw));
+  CoordinateType temp6 = (sin(pitch)*sin(roll)*sin(yaw)+cos(roll)*cos(yaw));
+  CoordinateType temp7 = (-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw));
+  CoordinateType temp8 = (sin(roll)*cos(yaw)-sin(pitch)*cos(roll)*sin(yaw));
+  CoordinateType temp9 = (sin(pitch)*cos(roll)*sin(yaw)-sin(roll)*cos(yaw));
+  CoordinateType temp10 = cos(pitch)*sin(roll)*cos(yaw);
+  CoordinateType temp11 = cos(pitch)*cos(yaw)+x;
+  CoordinateType temp12 = cos(pitch)*cos(roll)*cos(yaw);
+  CoordinateType temp13 = sin(pitch)*cos(yaw);
+  CoordinateType temp14 = cos(pitch)*sin(yaw);
+  CoordinateType temp15 = cos(pitch)*cos(yaw);
+  CoordinateType temp16 = sin(pitch)*sin(roll);
+  CoordinateType temp17 = sin(pitch)*cos(roll);
+  CoordinateType temp18 = cos(pitch)*sin(roll)*sin(yaw);
+  CoordinateType temp19 = cos(pitch)*cos(roll)*sin(yaw);
+  CoordinateType temp20 = sin(pitch)*sin(yaw);
+  CoordinateType temp21 = (cos(roll)*sin(yaw)-sin(pitch)*sin(roll)*cos(yaw));
+  CoordinateType temp22 = cos(pitch)*cos(roll);
+  CoordinateType temp23 = cos(pitch)*sin(roll);
+  CoordinateType temp24 = cos(pitch);
+
+  #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
+  #pragma omp parallel for
+  #endif
+  for( int r=0; r<nRows; r++ )
+  {
+    for( int c=0; c<nCols; c++ )
     {
-        int nRows = source_grayImg.rows;
-        int nCols = source_grayImg.cols;
+      int i = nCols*r+c; //vector index
 
-        T scaleFactor = 1.0/pow(2,optimizationLevel);
-        T fx = cameraMatrix(0,0)*scaleFactor;
-        T fy = cameraMatrix(1,1)*scaleFactor;
-        T ox = cameraMatrix(0,2)*scaleFactor;
-        T oy = cameraMatrix(1,2)*scaleFactor;
-        T inv_fx = 1.f/fx;
-        T inv_fy = 1.f/fy;
+      //Compute the 3D coordinates of the pij of the source frame
+      Vector4Type point3D;
+      point3D(2) = source_depthImg( r, c );
+      if( m_MinDepth < point3D(2) && point3D(2) < m_MaxDepth )//Compute the jacobian only for the valid points
+      {
+        point3D(0) = (c - ox) * point3D(2) * inv_fx;
+        point3D(1) = (r - oy) * point3D(2) * inv_fy;
+        point3D(3) = 1.0;
 
-        T x = stateVector[0];
-        T y = stateVector[1];
-        T z = stateVector[2];
-        T yaw = stateVector[3];
-        T pitch = stateVector[4];
-        T roll = stateVector[5];
+        CoordinateType px = point3D(0);
+        CoordinateType py = point3D(1);
+        CoordinateType pz = point3D(2);
 
-        //Compute the rigid transformation matrix from the parameters
-        Eigen::Matrix4f Rt = Eigen::Matrix4f::Identity();
-        T sin_yaw = sin(yaw);
-        T cos_yaw = cos(yaw);
-        T sin_pitch = sin(pitch);
-        T cos_pitch = cos(pitch);
-        T sin_roll = sin(roll);
-        T cos_roll = cos(roll);
-        Rt(0,0) = cos_yaw * cos_pitch;
-        Rt(0,1) = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
-        Rt(0,2) = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
-        Rt(0,3) = x;
-        Rt(1,0) = sin_yaw * cos_pitch;
-        Rt(1,1) = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
-        Rt(1,2) = sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll;
-        Rt(1,3) = y;
-        Rt(2,0) = -sin_pitch;
-        Rt(2,1) = cos_pitch * sin_roll;
-        Rt(2,2) = cos_pitch * cos_roll;
-        Rt(2,3) = z;
-        Rt(3,0) = 0;
-        Rt(3,1) = 0;
-        Rt(3,2) = 0;
-        Rt(3,3) = 1;
+        //Transform the 3D point using the transformation matrix Rt
+        Vector4Type transformedPoint3D = Rt*point3D;
 
-        T temp1 = cos(pitch)*sin(roll);
-        T temp2 = cos(pitch)*cos(roll);
-        T temp3 = sin(pitch);
-        T temp4 = (sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw));
-        T temp5 = (sin(pitch)*sin(roll)*cos(yaw)-cos(roll)*sin(yaw));
-        T temp6 = (sin(pitch)*sin(roll)*sin(yaw)+cos(roll)*cos(yaw));
-        T temp7 = (-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw));
-        T temp8 = (sin(roll)*cos(yaw)-sin(pitch)*cos(roll)*sin(yaw));
-        T temp9 = (sin(pitch)*cos(roll)*sin(yaw)-sin(roll)*cos(yaw));
-        T temp10 = cos(pitch)*sin(roll)*cos(yaw);
-        T temp11 = cos(pitch)*cos(yaw)+x;
-        T temp12 = cos(pitch)*cos(roll)*cos(yaw);
-        T temp13 = sin(pitch)*cos(yaw);
-        T temp14 = cos(pitch)*sin(yaw);
-        T temp15 = cos(pitch)*cos(yaw);
-        T temp16 = sin(pitch)*sin(roll);
-        T temp17 = sin(pitch)*cos(roll);
-        T temp18 = cos(pitch)*sin(roll)*sin(yaw);
-        T temp19 = cos(pitch)*cos(roll)*sin(yaw);
-        T temp20 = sin(pitch)*sin(yaw);
-        T temp21 = (cos(roll)*sin(yaw)-sin(pitch)*sin(roll)*cos(yaw));
-        T temp22 = cos(pitch)*cos(roll);
-        T temp23 = cos(pitch)*sin(roll);
-        T temp24 = cos(pitch);
+        //Project the 3D point to the 2D plane
+        CoordinateType inv_transformedPz = 1.0 / transformedPoint3D(2);
+        CoordinateType transformed_c = (transformedPoint3D(0) * fx) * inv_transformedPz + ox; //transformed x (2D)
+        CoordinateType transformed_r = (transformedPoint3D(1) * fy) * inv_transformedPz + oy; //transformed y (2D)
+        int transformed_r_int = static_cast< int >( round( transformed_r ) );
+        int transformed_c_int = static_cast< int >( round( transformed_c ) );
 
-        #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
-        #pragma omp parallel for
+        //Asign the intensity value to the warped image and compute the difference between the transformed
+        //pixel of frame 1 and the corresponding pixel of frame 2. Compute the error function
+        if( ( transformed_r_int >= 0 && transformed_r_int < nRows ) &
+            ( transformed_c_int >= 0 && transformed_c_int < nCols ) )
+        {
+          //Obtain the pixel values that will be used to compute the pixel residual
+          CoordinateType pixel1 = source_grayImg( r, c ); //Intensity value of the pixel(r,c) of the warped frame 1
+          CoordinateType pixel2 = target_grayImg( transformed_r_int, transformed_c_int ); //Intensity value of the pixel(r,c) of frame 2
+
+          //Compute the pixel jacobian
+          Eigen::Matrix<CoordinateType,2,6> jacobianPrRt;
+          CoordinateType temp25 = 1.0/(z+py*temp1+pz*temp2-px*temp3);
+          CoordinateType temp26 = temp25*temp25;
+
+          //Derivative with respect to x
+          jacobianPrRt(0,0) = fx*temp25;
+          jacobianPrRt(1,0) = 0.0;
+
+          //Derivative with respect to y
+          jacobianPrRt(0,1) = 0.0;
+          jacobianPrRt(1,1) = fy*temp25;
+
+          //Derivative with respect to z
+          jacobianPrRt(0,2) = -fx*(pz*temp4+py*temp5+px*temp11)*temp26;
+          jacobianPrRt(1,2) = -fy*(py*temp6+pz*temp9+px*temp14+y)*temp26;
+
+          //Derivative with respect to yaw
+          jacobianPrRt(0,3) = fx*(py*temp7+pz*temp8-px*temp14)*temp25;
+          jacobianPrRt(1,3) = fy*(pz*temp4+py*temp5+px*temp15)*temp25;
+
+          //Derivative with respect to pitch
+          jacobianPrRt(0,4) = fx*(py*temp10+pz*temp12-px*temp13)*temp25
+                              -fx*(-py*temp16-pz*temp17-px*temp24)*(pz*temp4+py*temp5+px*temp11)*temp26;
+          jacobianPrRt(1,4) = fy*(py*temp18+pz*temp19-px*temp20)*temp25
+                              -fy*(-py*temp16-pz*temp17-px*temp24)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
+
+          //Derivative with respect to roll
+          jacobianPrRt(0,5) = fx*(py*temp4+pz*temp21)*temp25
+                              -fx*(py*temp22-pz*temp23)*(pz*temp4+py*temp5+px*temp11)*temp26;
+          jacobianPrRt(1,5) = fy*(pz*temp7+py*temp9)*temp25
+                              -fy*(py*temp22-pz*temp23)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
+
+          //Apply the chain rule to compound the image gradients with the projective+RigidTransform jacobians
+          Eigen::Matrix<CoordinateType,1,2> target_imgGradient;
+          target_imgGradient(0,0) = target_gradXImg(i);
+          target_imgGradient(0,1) = target_gradYImg(i);
+          Eigen::Matrix<CoordinateType,1,6> jacobian = target_imgGradient*jacobianPrRt;
+
+          //Assign the pixel residual and jacobian to its corresponding row
+          #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
+          #pragma omp critical
+          #endif
+          {
+            jacobians(i,0)=jacobian(0,0);
+            jacobians(i,1)=jacobian(0,1);
+            jacobians(i,2)=jacobian(0,2);
+            jacobians(i,3)=jacobian(0,3);
+            jacobians(i,4)=jacobian(0,4);
+            jacobians(i,5)=jacobian(0,5);
+
+            residuals( nCols * transformed_r_int + transformed_c_int , 0 ) = pixel2 - pixel1;
+            if( m_VisualizeIterations )
+              warped_source_grayImage( transformed_r_int, transformed_c_int ) = pixel1;
+          }
+        }
+      }
+    }
+  }
+}
+
+enum TerminationCriteriaType
+{
+  NonTerminated = -1,
+  MaxIterationsReached = 0,
+  GradientNormLowerThanThreshold = 1
+};
+
+bool TestTerminationCriteria()
+{
+  bool optimizationFinished = false;
+
+  CoordinateType gradientNorm = m_Gradients.norm();
+
+  TerminationCriteriaType terminationCriteria = NonTerminated;
+  if( m_Iteration >= m_MaxNumIterations[ m_OptimizationLevel ] )
+  {
+    terminationCriteria = MaxIterationsReached;
+    optimizationFinished = true;
+  }
+  else if( gradientNorm < m_MinGradientNorms[ m_OptimizationLevel ] )
+  {
+    terminationCriteria = GradientNormLowerThanThreshold;
+    optimizationFinished = true;
+  }
+
+  if( optimizationFinished )
+  {
+    #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
+    std::cout<<"----------------------------------------"<<std::endl;
+    std::cout<<"Optimization level: "<<optimizationLevel<<std::endl;
+    std::cout<<"Termination criteria: ";
+    #endif
+
+    switch( terminationCriteria )
+    {
+      case MaxIterationsReached:
+        #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
+        std::cout<<" Max number of iterations reached ("<<max_num_iterations[optimizationLevel]<<")"<<std::endl;;
         #endif
-        for (int r=0;r<nRows;r++)
-        {
-            for (int c=0;c<nCols;c++)
-            {
-                int i = nCols*r+c; //vector index
-
-                //Compute the 3D coordinates of the pij of the source frame
-                Eigen::Vector4f point3D;
-                point3D(2)=source_depthImg.at<T>(r,c);
-                if(minDepth < point3D(2) && point3D(2) < maxDepth)//Compute the jacobian only for the valid points
-                {
-                    point3D(0)=(c - ox) * point3D(2) * inv_fx;
-                    point3D(1)=(r - oy) * point3D(2) * inv_fy;
-                    point3D(3)=1;
-
-                    T px = point3D(0);
-                    T py = point3D(1);
-                    T pz = point3D(2);
-
-                    //Transform the 3D point using the transformation matrix Rt
-                    Eigen::Vector4f  transformedPoint3D = Rt*point3D;
-
-                    //Project the 3D point to the 2D plane
-                    T inv_transformedPz = 1.0/transformedPoint3D(2);
-                    T transformed_r,transformed_c; // 2D coordinates of the transformed pixel(r,c) of frame 1
-                    transformed_c = (transformedPoint3D(0) * fx)*inv_transformedPz + ox; //transformed x (2D)
-                    transformed_r = (transformedPoint3D(1) * fy)*inv_transformedPz + oy; //transformed y (2D)
-                    int transformed_r_int = round(transformed_r);
-                    int transformed_c_int = round(transformed_c);
-
-                    //Asign the intensity value to the warped image and compute the difference between the transformed
-                    //pixel of frame 1 and the corresponding pixel of frame 2. Compute the error function
-                    if((transformed_r_int>=0 && transformed_r_int < nRows) &
-                       (transformed_c_int>=0 && transformed_c_int < nCols))
-                    {
-                        //Obtain the pixel values that will be used to compute the pixel residual
-                        T pixel1; //Intensity value of the pixel(r,c) of the warped frame 1
-                        T pixel2; //Intensity value of the pixel(r,c) of frame 2
-                        pixel1 = source_grayImg.at<T>(r,c);
-                        pixel2 = target_grayImg.at<T>(transformed_r_int,transformed_c_int);
-
-                        //Compute the pixel jacobian
-                        Eigen::Matrix<T,2,6> jacobianPrRt;
-                        T temp25 = 1.0/(z+py*temp1+pz*temp2-px*temp3);
-                        T temp26 = temp25*temp25;
-
-                            //Derivative with respect to x
-                            jacobianPrRt(0,0)=fx*temp25;
-                            jacobianPrRt(1,0)=0;
-
-                            //Derivative with respect to y
-                            jacobianPrRt(0,1)=0;
-                            jacobianPrRt(1,1)=fy*temp25;
-
-                            //Derivative with respect to z
-                            jacobianPrRt(0,2)=-fx*(pz*temp4+py*temp5+px*temp11)*temp26;
-                            jacobianPrRt(1,2)=-fy*(py*temp6+pz*temp9+px*temp14+y)*temp26;
-
-                            //Derivative with respect to yaw
-                            jacobianPrRt(0,3)=fx*(py*temp7+pz*temp8-px*temp14)*temp25;
-                            jacobianPrRt(1,3)=fy*(pz*temp4+py*temp5+px*temp15)*temp25;
-
-                            //Derivative with respect to pitch
-                            jacobianPrRt(0,4)=fx*(py*temp10+pz*temp12-px*temp13)*temp25
-                            -fx*(-py*temp16-pz*temp17-px*temp24)*(pz*temp4+py*temp5+px*temp11)*temp26;
-                            jacobianPrRt(1,4)=fy*(py*temp18+pz*temp19-px*temp20)*temp25
-                            -fy*(-py*temp16-pz*temp17-px*temp24)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
-
-                            //Derivative with respect to roll
-                            jacobianPrRt(0,5)=fx*(py*temp4+pz*temp21)*temp25
-                            -fx*(py*temp22-pz*temp23)*(pz*temp4+py*temp5+px*temp11)*temp26;
-                            jacobianPrRt(1,5)=fy*(pz*temp7+py*temp9)*temp25
-                            -fy*(py*temp22-pz*temp23)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
-
-                          //Apply the chain rule to compound the image gradients with the projective+RigidTransform jacobians
-                          Eigen::Matrix<T,1,2> target_imgGradient;
-                          target_imgGradient(0,0)=target_gradXImg.at<T>(i);
-                          target_imgGradient(0,1)=target_gradYImg.at<T>(i);
-                          Eigen::Matrix<T,1,6> jacobian=target_imgGradient*jacobianPrRt;
-
-                          //Assign the pixel residual and jacobian to its corresponding row
-                          #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
-			  #pragma omp critical
-			  #endif
-                          {
-                              jacobians(i,0)=jacobian(0,0);
-                              jacobians(i,1)=jacobian(0,1);
-                              jacobians(i,2)=jacobian(0,2);
-                              jacobians(i,3)=jacobian(0,3);
-                              jacobians(i,4)=jacobian(0,4);
-                              jacobians(i,5)=jacobian(0,5);
-
-                              residuals(nCols*transformed_r_int+transformed_c_int,0) = pixel2 - pixel1;
-                              if(visualizeIterations)
-                                warped_source_grayImage.at<T>(transformed_r_int,transformed_c_int) = pixel1;
-                          }
-                    }
-                }
-            }
-        }
+        break;
+      case GradientNormLowerThanThreshold:
+        #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
+        std::cout<<" Gradient norm is lower than threshold ("<<gradient_tolerance[optimizationLevel]<<")"<<std::endl;
+        #endif
+        break;
+      default :
+        break;
     }
 
-    enum TerminationCriteriaType {NonTerminated = -1,MaxIterationsReached = 0,GradientNormLowerThanThreshold = 1};
-    bool testTerminationCriteria()
-    {
-        bool optimizationFinished = false;
+    #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
+    std::cout<<"Number iterations: "<<iter<<std::endl;
+    std::cout<<"gradient norm: "<<gradientNorm<<std::endl;
+    std::cout<<"----------------------------------------"<<std::endl;
+    #endif
+  }
 
-        T gradientNorm = gradients.norm();
-
-        TerminationCriteriaType terminationCriteria = NonTerminated;
-        if(iter>=max_num_iterations[optimizationLevel])
-        {
-            terminationCriteria = MaxIterationsReached;
-            optimizationFinished = true;
-        }
-        else if(gradientNorm<min_gradient_norm[optimizationLevel])
-        {
-            terminationCriteria = GradientNormLowerThanThreshold;
-            optimizationFinished = true;
-        }
-
-        if(optimizationFinished)
-        {
-            #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-            std::cout<<"----------------------------------------"<<std::endl;
-            std::cout<<"Optimization level: "<<optimizationLevel<<std::endl;
-            std::cout<<"Termination criteria: ";
-            #endif
-
-            switch(terminationCriteria)
-            {
-                case MaxIterationsReached:
-                    #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-                    std::cout<<" Max number of iterations reached ("<<max_num_iterations[optimizationLevel]<<")"<<std::endl;;
-                    #endif
-                    break;
-                case GradientNormLowerThanThreshold:
-                    #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-                    std::cout<<" Gradient norm is lower than threshold ("<<gradient_tolerance[optimizationLevel]<<")"<<std::endl;
-                    #endif
-                    break;
-                default :
-                    break;
-            }
-
-            #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-            std::cout<<"Number iterations: "<<iter<<std::endl;
-            std::cout<<"gradient norm: "<<gradientNorm<<std::endl;
-            std::cout<<"----------------------------------------"<<std::endl;
-            #endif
-        }
-
-        return optimizationFinished;
-    }
+  return optimizationFinished;
+}
 
 public:
 
-    CPhotoconsistencyOdometryAnalytic(){minDepth=0.3;maxDepth=5.0;};
+CPhotoconsistencyOdometryAnalytic() : m_MinDepth( 0.3 ), m_MaxDepth( 5.0 )
+{}
 
-    ~CPhotoconsistencyOdometryAnalytic(){};
+~CPhotoconsistencyOdometryAnalytic(){}
 
-    /*!Sets the minimum depth distance (m) to consider a certain pixel valid.*/
-    void setMinDepth(T minD)
+/*!Sets the minimum depth distance (m) to consider a certain pixel valid.*/
+void SetMinDepth( const CoordinateType minD )
+{
+  m_MinDepth = minD;
+}
+
+/*!Sets the maximum depth distance (m) to consider a certain pixel valid.*/
+void SetMaxDepth( const CoordinateType maxD )
+{
+  m_MaxDepth = maxD;
+}
+
+/*!Sets the 3x3 intrinsic camera matrix*/
+void SetIntrinsicMatrix( const Matrix33Type & intrinsicMatrix )
+{
+  m_IntrinsicMatrix = intrinsicMatrix;
+}
+
+/*!Sets the source (Intensity+Depth) frame.*/
+void SetSourceFrame( const IntensityImageType & intensityImage,
+                     const DepthImageType & depthImage )
+{
+  //Create an auxialiary image from the imput image
+  IntensityImageType intensityImageAux;
+  intensityImage.convertTo( intensityImageAux, intensityImage.type(), 1./255 );
+
+  //Compute image pyramids for the grayscale and depth images
+  BuildPyramid( intensityImageAux, m_IntensityPyramid0, m_NumOptimizationLevels, true );
+  BuildPyramid( depthImage, m_DepthPyramid0, m_NumOptimizationLevels, false );
+}
+
+/*!Sets the source (Intensity+Depth) frame. Depth image is ignored*/
+void SetTargetFrame( const IntensityImageType & intensityImage,
+                     const DepthImageType & depthImage )
+{
+  //Create an auxialiary image from the imput image
+  IntensityImageType intensityImageAux;
+  intensityImage.convertTo( intensityImageAux, intensityImage.type(), 1./255 );
+
+  //Compute image pyramids for the grayscale and depth images
+  BuildPyramid( intensityImageAux, m_IntensityPyramid1, m_NumOptimizationLevels, true );
+
+  //Compute image pyramids for the gradients images
+  BuildDerivativesPyramids( m_IntensityPyramid1, m_IntensityGradientXPyramid1, m_IntensityGradientYPyramid1 );
+}
+
+/*!Initializes the state vector to a certain value. The optimization process uses the initial state vector as the initial estimate.*/
+void SetInitialStateVector( const Vector6Type & initialStateVector )
+{
+  m_StateVector = initialStateVector;
+}
+
+/*!Launches the least-squares optimization process to find the configuration of the state vector parameters that maximizes the photoconsistency between the source and target frame.*/
+void Optimize()
+{
+  for( m_OptimizationLevel = m_NumOptimizationLevels-1;
+       m_OptimizationLevel >= 0; m_OptimizationLevel-- )
+  {
+    int nRows = m_IntensityPyramid0[ m_OptimizationLevel ].rows;
+    int nCols = m_IntensityPyramid0[ m_OptimizationLevel ].cols;
+    int nPoints = nRows * nCols;
+
+    m_Iteration = 0;
+    while(true)
     {
-        minDepth = minD;
-    }
+      #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
+      cv::TickMeter tm;tm.start();
+      #endif
+      IntensityImageType warpedSourceIntensityImage;
+      if( m_VisualizeIterations )
+        warpedSourceIntensityImage = IntensityImageType::zeros( nRows, nCols );
 
-    /*!Sets the maximum depth distance (m) to consider a certain pixel valid.*/
-    void setMaxDepth(T maxD)
-    {
-        maxDepth = maxD;
-    }
+      Numeric::RowDynamicMatrixColMajor< CoordinateType, 1 > residuals;
+      residuals.resize( nPoints, Eigen::NoChange );
+      residuals.setZero();
+      //Eigen::Matrix<T,Eigen::Dynamic,1> residuals;
+      //residuals = Eigen::Matrix<T,Eigen::Dynamic,1>::Zero(nPoints,1);
+      Numeric::RowDynamicMatrixColMajor< CoordinateType, 6 > jacobians;
+      jacobians.resize( nPoints, Eigen::NoChange );
+      jacobians.setZero();
+      //Eigen::Matrix<T,Eigen::Dynamic,6> jacobians;
+      //jacobians = Eigen::Matrix<T,Eigen::Dynamic,6>::Zero(nPoints,6);
 
-    /*!Sets the 3x3 matrix of (pinhole) camera intrinsic parameters used to obtain the 3D colored point cloud from the RGB and depth images.*/
-    void setCameraMatrix( Numeric::Matrix33< T > & camMat )
-    {
-        cameraMatrix = camMat;
-    }
-
-    /*!Sets the source (Intensity+Depth) frame.*/
-    void setSourceFrame(cv::Mat & imgGray,cv::Mat & imgDepth)
-    {
-        //Create a float auxialiary image from the imput image
-        cv::Mat imgGrayFloat;
-        imgGray.convertTo(imgGrayFloat, CV_32FC1, 1./255 );
-
-        //Compute image pyramids for the grayscale and depth images
-        buildPyramid(imgGrayFloat,gray0Pyr,numOptimizationLevels,true);
-        buildPyramid(imgDepth,depth0Pyr,numOptimizationLevels,false);
-    }
-
-    /*!Sets the source (Intensity+Depth) frame. Depth image is ignored*/
-    void setTargetFrame(cv::Mat & imgGray,cv::Mat & imgDepth)
-    {
-        //Create a float auxialiary image from the imput image
-        cv::Mat imgGrayFloat;
-        imgGray.convertTo(imgGrayFloat, CV_32FC1, 1./255 );
-
-        //Compute image pyramids for the grayscale and depth images
-        buildPyramid(imgGrayFloat,gray1Pyr,numOptimizationLevels,true);
-
-        //Compute image pyramids for the gradients images
-        buildDerivativesPyramids(gray1Pyr,gray1GradXPyr,gray1GradYPyr);
-    }
-
-    /*!Initializes the state vector to a certain value. The optimization process uses the initial state vector as the initial estimate.*/
-    void setInitialStateVector(const std::vector< T > & initialStateVector)
-    {
-        stateVector[0] = initialStateVector[0];
-        stateVector[1] = initialStateVector[1];
-        stateVector[2] = initialStateVector[2];
-        stateVector[3] = initialStateVector[3];
-        stateVector[4] = initialStateVector[4];
-        stateVector[5] = initialStateVector[5];
-    }
-
-    /*!Launches the least-squares optimization process to find the configuration of the state vector parameters that maximizes the photoconsistency between the source and target frame.*/
-    void optimize()
-    {
-        for(optimizationLevel = numOptimizationLevels-1;optimizationLevel>=0;optimizationLevel--)
-        {
-            int nRows = gray0Pyr[optimizationLevel].rows;
-            int nCols = gray0Pyr[optimizationLevel].cols;
-            int nPoints = nRows * nCols;
-
-            iter = 0;
-            while(true)
-            {
-                #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-                cv::TickMeter tm;tm.start();
-                #endif
-                cv::Mat warped_source_grayImage;
-                if(visualizeIterations)
-                    warped_source_grayImage = cv::Mat::zeros(nRows,nCols,gray0Pyr[optimizationLevel].type());
-
-                Eigen::Matrix<T,Eigen::Dynamic,1> residuals;
-                residuals = Eigen::MatrixXf::Zero(nPoints,1);
-                Eigen::Matrix<T,Eigen::Dynamic,6> jacobians;
-                jacobians = Eigen::MatrixXf::Zero(nPoints,6);
-
-                if(max_num_iterations[optimizationLevel]>0) //compute only if the number of maximum iterations are greater than 0
-                {
-                    computeResidualsAndJacobians(
-                            gray0Pyr[optimizationLevel],
-                            depth0Pyr[optimizationLevel],
-                            gray1Pyr[optimizationLevel],
-                            gray1GradXPyr[optimizationLevel],
-                            gray1GradYPyr[optimizationLevel],
+      if( m_MaxNumIterations[ m_OptimizationLevel] > 0 ) //compute only if the number of maximum iterations are greater than 0
+      {
+        ComputeResidualsAndJacobians(
+                            m_IntensityPyramid0[ m_OptimizationLevel ],
+                            m_DepthPyramid0[ m_OptimizationLevel ],
+                            m_IntensityPyramid1[ m_OptimizationLevel ],
+                            m_IntensityGradientXPyramid1[ m_OptimizationLevel ],
+                            m_IntensityGradientYPyramid1[ m_OptimizationLevel ],
                             residuals,
                             jacobians,
-                            warped_source_grayImage);
+                            warpedSourceIntensityImage );
 
-                    gradients = jacobians.transpose()*residuals;
-                    stateVector = stateVector - lambda_optimization_step[optimizationLevel]*((jacobians.transpose()*jacobians).inverse() * gradients);
+        m_Gradients = jacobians.transpose()*residuals;
+        m_StateVector = m_StateVector - m_LambdaOptimizationSteps[ m_OptimizationLevel ] *
+            ((jacobians.transpose()*jacobians).inverse() * m_Gradients );
 
-                    #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
-                    tm.stop(); std::cout << "Iteration time = " << tm.getTimeSec() << " sec." << std::endl;
-                    #endif
-                }
-
-                iter++;
-
-                if(testTerminationCriteria()){break;}
-
-                if(visualizeIterations)
-                {
-                    cv::Mat imgDiff = cv::Mat::zeros(nRows,nCols,gray1Pyr[optimizationLevel].type());
-                    cv::absdiff(gray1Pyr[optimizationLevel],warped_source_grayImage,imgDiff);
-                    cv::imshow("optimize::imgDiff",imgDiff);
-                    cv::waitKey(0);
-                }
-            }
-        }
-
-        //After all the optimization process the optimization level is 0
-        optimizationLevel = 0;
-
-    }
-
-    /*!Returns the optimal state vector. This method has to be called after calling the optimize() method.*/
-    void getOptimalStateVector(std::vector< T > & optimalStateVector)
-    {
-        optimalStateVector[0] = stateVector[0];
-        optimalStateVector[1] = stateVector[1];
-        optimalStateVector[2] = stateVector[2];
-        optimalStateVector[3] = stateVector[3];
-        optimalStateVector[4] = stateVector[4];
-        optimalStateVector[5] = stateVector[5];
-    }
-
-    /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the optimize() method.*/
-    void getOptimalRigidTransformationMatrix( Numeric::Matrix44< T > & optimal_Rt )
-    {
-        eigenPose(stateVector[0],stateVector[1],stateVector[2],
-                  stateVector[3],stateVector[4],stateVector[5],optimal_Rt);
-    }
-
-    /*!Reads the configuration parameters from a .yml file.*/
-    void readConfigurationFile(std::string fileName)
-    {
-        cv::FileStorage fs(fileName, cv::FileStorage::READ);
-
-        //Read the number of optimization levels
-        fs["numOptimizationLevels"] >> numOptimizationLevels;
-
-        #if ENABLE_GAUSSIAN_BLUR || ENABLE_BOX_FILTER_BLUR
-        //Read the blur filter size at every pyramid level
-        fs["blurFilterSize (at each level)"] >> blurFilterSize;
+        #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
+        tm.stop(); std::cout << "Iteration time = " << tm.getTimeSec() << " sec." << std::endl;
         #endif
+      }
 
-        //Read the scaling factor for each gradient image at each level
-        fs["imageGradientsScalingFactor (at each level)"] >> imageGradientsScalingFactor;
+      m_Iteration++;
 
-        //Read the lambda factor to change the optimization step
-        fs["lambda_optimization_step (at each level)"] >> lambda_optimization_step;
+      if( TestTerminationCriteria() ){break;}
 
-        //Read the number of Levenberg-Marquardt iterations at each optimization level
-        fs["max_num_iterations (at each level)"] >> max_num_iterations;
-
-        //Read optimizer minimum gradient norm at each level
-        fs["min_gradient_norm (at each level)"] >> min_gradient_norm;
-
-        //Read the boolean value to determine if visualize the progress images or not
-        fs["visualizeIterations"] >> visualizeIterations;
+      if( m_VisualizeIterations )
+      {
+        IntensityImageType imgDiff = IntensityImageType::zeros( nRows, nCols );
+        cv::absdiff( m_IntensityPyramid1[ m_OptimizationLevel ], warpedSourceIntensityImage, imgDiff );
+        cv::imshow("optimize::imgDiff",imgDiff);
+        cv::waitKey(0);
+      }
     }
+  }
+
+  //After all the optimization process the optimization level is 0
+  m_OptimizationLevel = 0;
+}
+
+/*!Returns the optimal state vector. This method has to be called after calling the Optimize() method.*/
+Vector6Type GetOptimalStateVector() const
+{
+  return m_StateVector;
+}
+
+/*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the Optimize() method.*/
+Matrix44Type GetOptimalRigidTransformationMatrix() const
+{
+  Matrix44Type Rt;
+  eigenPose( m_StateVector(0), m_StateVector(1), m_StateVector(2),
+             m_StateVector(3), m_StateVector(4), m_StateVector(5), Rt );
+  return Rt;
+}
+
+/*!Reads the configuration parameters from a .yml file.*/
+void ReadConfigurationFile( const std::string & fileName )
+{
+  cv::FileStorage fs( fileName, cv::FileStorage::READ );
+
+  //Read the number of optimization levels
+  fs["numOptimizationLevels"] >> m_NumOptimizationLevels;
+
+  #if ENABLE_GAUSSIAN_BLUR || ENABLE_BOX_FILTER_BLUR
+  //Read the blur filter size at every pyramid level
+  fs["blurFilterSize (at each level)"] >> m_BlurFilterSizes;
+  #endif
+
+  //Read the scaling factor for each gradient image at each level
+  fs["imageGradientsScalingFactor (at each level)"] >> m_ImageGradientsScalingFactors;
+
+  //Read the lambda factor to change the optimization step
+  fs["lambda_optimization_step (at each level)"] >> m_LambdaOptimizationSteps;
+
+  //Read the number of Levenberg-Marquardt iterations at each optimization level
+  fs["max_num_iterations (at each level)"] >> m_MaxNumIterations;
+
+  //Read optimizer minimum gradient norm at each level
+  fs["min_gradient_norm (at each level)"] >> m_MinGradientNorms;
+
+  //Read the boolean value to determine if visualize the progress images or not
+  fs["visualizeIterations"] >> m_VisualizeIterations;
+}
 };
 
 } //end namespace Analytic
