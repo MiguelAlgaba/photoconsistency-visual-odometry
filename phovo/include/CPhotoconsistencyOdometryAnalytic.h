@@ -192,8 +192,6 @@ void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
                                    const IntensityImageType & target_gradYImg,
                                    Numeric::RowDynamicMatrixColMajor< CoordinateType, 1 > & residuals,
                                    Numeric::RowDynamicMatrixColMajor< CoordinateType, 6 > & jacobians,
-                                   //Eigen::Matrix<T,Eigen::Dynamic,1> & residuals,
-                                   //Eigen::Matrix<T,Eigen::Dynamic,6> & jacobians,
                                    IntensityImageType & warped_source_grayImage)
 {
   int nRows = source_grayImg.rows;
@@ -428,7 +426,19 @@ bool TestTerminationCriteria()
 public:
 
 CPhotoconsistencyOdometryAnalytic() : m_MinDepth( 0.3 ), m_MaxDepth( 5.0 )
-{}
+{
+  m_StateVector.setZero();
+  m_NumOptimizationLevels = 5;
+  m_BlurFilterSizes.resize( m_NumOptimizationLevels, 0 );
+  m_ImageGradientsScalingFactors.resize( m_NumOptimizationLevels, 0.0625 );
+  m_LambdaOptimizationSteps.resize( m_NumOptimizationLevels, 1. );
+  m_MaxNumIterations.resize( m_NumOptimizationLevels, 0 );
+  m_MaxNumIterations[ 2 ] = 5;
+  m_MaxNumIterations[ 3 ] = 20;
+  m_MaxNumIterations[ 4 ] = 50;
+  m_MinGradientNorms.resize( m_NumOptimizationLevels, 300. );
+  m_VisualizeIterations = false;
+}
 
 ~CPhotoconsistencyOdometryAnalytic(){}
 
@@ -507,13 +517,9 @@ void Optimize()
       Numeric::RowDynamicMatrixColMajor< CoordinateType, 1 > residuals;
       residuals.resize( nPoints, Eigen::NoChange );
       residuals.setZero();
-      //Eigen::Matrix<T,Eigen::Dynamic,1> residuals;
-      //residuals = Eigen::Matrix<T,Eigen::Dynamic,1>::Zero(nPoints,1);
       Numeric::RowDynamicMatrixColMajor< CoordinateType, 6 > jacobians;
       jacobians.resize( nPoints, Eigen::NoChange );
       jacobians.setZero();
-      //Eigen::Matrix<T,Eigen::Dynamic,6> jacobians;
-      //jacobians = Eigen::Matrix<T,Eigen::Dynamic,6>::Zero(nPoints,6);
 
       if( m_MaxNumIterations[ m_OptimizationLevel] > 0 ) //compute only if the number of maximum iterations are greater than 0
       {
