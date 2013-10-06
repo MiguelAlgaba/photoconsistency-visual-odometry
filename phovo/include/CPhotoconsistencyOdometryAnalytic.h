@@ -54,12 +54,12 @@ namespace Analytic
 /*!This class computes the rigid (6DoF) transformation that best aligns a pair of RGBD frames using a photoconsistency maximization approach.
 To estimate the rigid transformation, this class implements a coarse to fine approach. Thus, the algorithm starts finding a first pose approximation at
 a low resolution level and uses the estimate to initialize the optimization at greater image scales. Both the residuals and jacobians are computed analytically.*/
-template< class TCoordinate >
+template< class TPixel, class TCoordinate >
 class CPhotoconsistencyOdometryAnalytic :
-    public CPhotoconsistencyOdometry< TCoordinate >
+    public CPhotoconsistencyOdometry< TPixel, TCoordinate >
 {
 public:
-  typedef CPhotoconsistencyOdometry< TCoordinate > Superclass;
+  typedef CPhotoconsistencyOdometry< TPixel, TCoordinate > Superclass;
 
   typedef typename Superclass::CoordinateType     CoordinateType;
   typedef typename Superclass::IntensityImageType IntensityImageType;
@@ -111,18 +111,21 @@ private:
   /*!Maximum allowed depth to consider a depth pixel valid.*/
   CoordinateType m_MaxDepth;
 
-  void BuildPyramid( const IntensityImageType & img,
-                     IntensityImageContainerType & pyramid,
-                     const int levels, const bool applyBlur )
+template< class TImage >
+void BuildPyramid( const TImage & img,
+                   std::vector< TImage > & pyramid,
+                   const int levels, const bool applyBlur )
 {
+  typedef TImage ImageType;
+
   //Create space for all the images
   pyramid.resize( levels );
 
-  CoordinateType factor = 1;
+  double factor = 1.;
   for( int level=0; level<levels; level++ )
   {
     //Create an auxiliar image of factor times the size of the original image
-    IntensityImageType imgAux;
+    ImageType imgAux;
     if( level!=0 )
     {
       cv::resize( img, imgAux, cv::Size(0,0), factor, factor );
@@ -170,15 +173,15 @@ void BuildDerivativesPyramids( IntensityImageContainerType & imagePyramid,
   derXPyramid.resize(imagePyramid.size());
   derYPyramid.resize(imagePyramid.size());
 
-  for(int level=0;level<imagePyramid.size();level++)
+  for( size_t level=0; level<imagePyramid.size(); level++ )
   {
     // Compute the gradient in x
-    cv::Mat imgGray1_grad_x;
+    IntensityImageType imgGray1_grad_x;
     cv::Scharr( imagePyramid[level], derXPyramid[level], ddepth, 1, 0,
                 m_ImageGradientsScalingFactors[level], delta, cv::BORDER_DEFAULT );
 
     // Compute the gradient in y
-    cv::Mat imgGray1_grad_y;
+    IntensityImageType imgGray1_grad_y;
     cv::Scharr( imagePyramid[level], derYPyramid[level],ddepth, 0, 1,
                 m_ImageGradientsScalingFactors[level], delta, cv::BORDER_DEFAULT );
   }
@@ -299,8 +302,12 @@ void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
             ( transformed_c_int >= 0 && transformed_c_int < nCols ) )
         {
           //Obtain the pixel values that will be used to compute the pixel residual
-          CoordinateType pixel1 = source_grayImg( r, c ); //Intensity value of the pixel(r,c) of the warped frame 1
-          CoordinateType pixel2 = target_grayImg( transformed_r_int, transformed_c_int ); //Intensity value of the pixel(r,c) of frame 2
+          // pixel1: Intensity value of the pixel(r,c) of the warped frame 1
+          // pixel2: Intensity value of the pixel(r,c) of frame 2
+          CoordinateType pixel1 =
+              static_cast< CoordinateType >( source_grayImg( r, c ) );
+          CoordinateType pixel2 =
+              static_cast< CoordinateType >( target_grayImg( transformed_r_int, transformed_c_int ) );
 
           //Compute the pixel jacobian
           Numeric::FixedMatrixRowMajor< CoordinateType, 2, 6 > jacobianPrRt;

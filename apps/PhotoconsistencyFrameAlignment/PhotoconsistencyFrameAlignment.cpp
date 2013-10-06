@@ -81,7 +81,7 @@ int main (int argc,char ** argv)
 
   //Define the photoconsistency odometry object and set the input parameters
 #if USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 0
-  phovo::Analytic::CPhotoconsistencyOdometryAnalytic< CoordinateType > photoconsistencyOdometry;
+  phovo::Analytic::CPhotoconsistencyOdometryAnalytic< PixelType, CoordinateType > photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 1
   phovo::Ceres::CPhotoconsistencyOdometryCeres photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 2

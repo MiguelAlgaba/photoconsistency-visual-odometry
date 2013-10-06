@@ -134,12 +134,14 @@ void warpImage( const cv::Mat_< TPixel > & intensityImage,
 }
 
 /*!This abstract class defines the mandatory methods that any derived class must implement to compute the rigid (6DoF) transformation that best aligns a pair of RGBD frames using a photoconsistency maximization approach.*/
-template< class TCoordinate >
+template< class TPixel, class TCoordinate >
 class CPhotoconsistencyOdometry
 {
 public:
+  typedef TPixel                PixelType;
+  typedef cv::Mat_< PixelType > IntensityImageType;
+
   typedef TCoordinate                CoordinateType;
-  typedef cv::Mat_< CoordinateType > IntensityImageType;
   typedef cv::Mat_< CoordinateType > DepthImageType;
 
   typedef Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
