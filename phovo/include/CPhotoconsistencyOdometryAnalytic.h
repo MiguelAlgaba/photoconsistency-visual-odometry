@@ -70,18 +70,19 @@ public:
   typedef typename Superclass::Vector4Type        Vector4Type;
 
 private:
-  typedef std::vector< IntensityImageType > IntensityImageContainerType;
-  typedef std::vector< DepthImageType >     DepthImageContainerType;
-  typedef std::vector< CoordinateType >     CoordinateContainerType;
-  typedef std::vector< int >                IntegerContainerType;
+  typedef DepthImageType                            InternalIntensityImageType;
+  typedef std::vector< InternalIntensityImageType > InternalIntensityImageContainerType;
+  typedef std::vector< DepthImageType >             DepthImageContainerType;
+  typedef std::vector< CoordinateType >             CoordinateContainerType;
+  typedef std::vector< int >                        IntegerContainerType;
 
   /*!Intensity (gray), depth and gradient image pyramids. Each pyramid has 'numOptimizationLevels' levels.*/
-  IntensityImageContainerType m_IntensityPyramid0;
-  IntensityImageContainerType m_IntensityPyramid1;
-  DepthImageContainerType     m_DepthPyramid0;
-  DepthImageContainerType     m_DepthPyramid1;
-  IntensityImageContainerType m_IntensityGradientXPyramid1;
-  IntensityImageContainerType m_IntensityGradientYPyramid1;
+  InternalIntensityImageContainerType m_IntensityPyramid0;
+  InternalIntensityImageContainerType m_IntensityPyramid1;
+  DepthImageContainerType             m_DepthPyramid0;
+  DepthImageContainerType             m_DepthPyramid1;
+  InternalIntensityImageContainerType m_IntensityGradientXPyramid1;
+  InternalIntensityImageContainerType m_IntensityGradientYPyramid1;
   /*!Camera matrix (intrinsic parameters).*/
   Matrix33Type m_IntrinsicMatrix;
   /*!Current optimization level. Level 0 corresponds to the higher image resolution.*/
@@ -161,9 +162,9 @@ void BuildPyramid( const TImage & img,
   }
 }
 
-void BuildDerivativesPyramids( IntensityImageContainerType & imagePyramid,
-                               IntensityImageContainerType & derXPyramid,
-                               IntensityImageContainerType & derYPyramid)
+void BuildDerivativesPyramids( InternalIntensityImageContainerType & imagePyramid,
+                               InternalIntensityImageContainerType & derXPyramid,
+                               InternalIntensityImageContainerType & derYPyramid)
 {
   //Compute image gradients
   double delta = 0.0;
@@ -176,25 +177,25 @@ void BuildDerivativesPyramids( IntensityImageContainerType & imagePyramid,
   for( size_t level=0; level<imagePyramid.size(); level++ )
   {
     // Compute the gradient in x
-    IntensityImageType imgGray1_grad_x;
+    InternalIntensityImageType imgGray1_grad_x;
     cv::Scharr( imagePyramid[level], derXPyramid[level], ddepth, 1, 0,
                 m_ImageGradientsScalingFactors[level], delta, cv::BORDER_DEFAULT );
 
     // Compute the gradient in y
-    IntensityImageType imgGray1_grad_y;
+    InternalIntensityImageType imgGray1_grad_y;
     cv::Scharr( imagePyramid[level], derYPyramid[level],ddepth, 0, 1,
                 m_ImageGradientsScalingFactors[level], delta, cv::BORDER_DEFAULT );
   }
 }
 
-void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
+void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_grayImg,
                                    const DepthImageType & source_depthImg,
-                                   const IntensityImageType & target_grayImg,
-                                   const IntensityImageType & target_gradXImg,
-                                   const IntensityImageType & target_gradYImg,
+                                   const InternalIntensityImageType & target_grayImg,
+                                   const InternalIntensityImageType & target_gradXImg,
+                                   const InternalIntensityImageType & target_gradYImg,
                                    Numeric::RowDynamicMatrixColMajor< CoordinateType, 1 > & residuals,
                                    Numeric::RowDynamicMatrixColMajor< CoordinateType, 6 > & jacobians,
-                                   IntensityImageType & warped_source_grayImage) const
+                                   InternalIntensityImageType & warped_source_grayImage) const
 {
   int nRows = source_grayImg.rows;
   int nCols = source_grayImg.cols;
@@ -304,10 +305,8 @@ void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
           //Obtain the pixel values that will be used to compute the pixel residual
           // pixel1: Intensity value of the pixel(r,c) of the warped frame 1
           // pixel2: Intensity value of the pixel(r,c) of frame 2
-          CoordinateType pixel1 =
-              static_cast< CoordinateType >( source_grayImg( r, c ) );
-          CoordinateType pixel2 =
-              static_cast< CoordinateType >( target_grayImg( transformed_r_int, transformed_c_int ) );
+          CoordinateType pixel1 = source_grayImg( r, c );
+          CoordinateType pixel2 = target_grayImg( transformed_r_int, transformed_c_int );
 
           //Compute the pixel jacobian
           Numeric::FixedMatrixRowMajor< CoordinateType, 2, 6 > jacobianPrRt;
@@ -349,20 +348,17 @@ void ComputeResidualsAndJacobians( const IntensityImageType & source_grayImg,
           Numeric::FixedRowVector< CoordinateType, 6 > jacobian = target_imgGradient*jacobianPrRt;
 
           //Assign the pixel residual and jacobian to its corresponding row
-          #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
-          #pragma omp critical
-          #endif
-          {
-            jacobians(i,0)=jacobian(0,0);
-            jacobians(i,1)=jacobian(0,1);
-            jacobians(i,2)=jacobian(0,2);
-            jacobians(i,3)=jacobian(0,3);
-            jacobians(i,4)=jacobian(0,4);
-            jacobians(i,5)=jacobian(0,5);
+          jacobians(i,0)=jacobian(0,0);
+          jacobians(i,1)=jacobian(0,1);
+          jacobians(i,2)=jacobian(0,2);
+          jacobians(i,3)=jacobian(0,3);
+          jacobians(i,4)=jacobian(0,4);
+          jacobians(i,5)=jacobian(0,5);
 
-            residuals( nCols * transformed_r_int + transformed_c_int , 0 ) = pixel2 - pixel1;
-            if( m_VisualizeIterations )
-              warped_source_grayImage( transformed_r_int, transformed_c_int ) = pixel1;
+          residuals( nCols * transformed_r_int + transformed_c_int , 0 ) = pixel2 - pixel1;
+          if( m_VisualizeIterations )
+          {
+            warped_source_grayImage( transformed_r_int, transformed_c_int ) = pixel1;
           }
         }
       }
@@ -471,8 +467,8 @@ void SetSourceFrame( const IntensityImageType & intensityImage,
                      const DepthImageType & depthImage )
 {
   //Create an auxialiary image from the imput image
-  IntensityImageType intensityImageAux;
-  intensityImage.convertTo( intensityImageAux, intensityImage.type(), 1./255 );
+  InternalIntensityImageType intensityImageAux;
+  intensityImage.convertTo( intensityImageAux, depthImage.type(), 1./255 );
 
   //Compute image pyramids for the grayscale and depth images
   BuildPyramid( intensityImageAux, m_IntensityPyramid0, m_NumOptimizationLevels, true );
@@ -484,8 +480,8 @@ void SetTargetFrame( const IntensityImageType & intensityImage,
                      const DepthImageType & depthImage )
 {
   //Create an auxialiary image from the imput image
-  IntensityImageType intensityImageAux;
-  intensityImage.convertTo( intensityImageAux, intensityImage.type(), 1./255 );
+  InternalIntensityImageType intensityImageAux;
+  intensityImage.convertTo( intensityImageAux, depthImage.type(), 1./255 );
 
   //Compute image pyramids for the grayscale and depth images
   BuildPyramid( intensityImageAux, m_IntensityPyramid1, m_NumOptimizationLevels, true );
@@ -516,9 +512,9 @@ void Optimize()
       #if ENABLE_PRINT_CONSOLE_OPTIMIZATION_PROGRESS
       cv::TickMeter tm;tm.start();
       #endif
-      IntensityImageType warpedSourceIntensityImage;
+      InternalIntensityImageType warpedSourceIntensityImage;
       if( m_VisualizeIterations )
-        warpedSourceIntensityImage = IntensityImageType::zeros( nRows, nCols );
+        warpedSourceIntensityImage = InternalIntensityImageType::zeros( nRows, nCols );
 
       Numeric::RowDynamicMatrixColMajor< CoordinateType, 1 > residuals;
       residuals.resize( nPoints, Eigen::NoChange );
@@ -554,7 +550,7 @@ void Optimize()
 
       if( m_VisualizeIterations )
       {
-        IntensityImageType imgDiff = IntensityImageType::zeros( nRows, nCols );
+        InternalIntensityImageType imgDiff = InternalIntensityImageType::zeros( nRows, nCols );
         cv::absdiff( m_IntensityPyramid1[ m_OptimizationLevel ], warpedSourceIntensityImage, imgDiff );
         cv::imshow("optimize::imgDiff",imgDiff);
         cv::waitKey(0);
