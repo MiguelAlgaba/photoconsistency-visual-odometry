@@ -85,7 +85,7 @@ int main (int argc,char ** argv)
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 1
   phovo::Ceres::CPhotoconsistencyOdometryCeres photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 2
-  phovo::Analytic::CPhotoconsistencyOdometryBiObjective photoconsistencyOdometry;
+  phovo::Analytic::CPhotoconsistencyOdometryBiObjective< PixelType, CoordinateType > photoconsistencyOdometry;
 #endif
   Vector6Type stateVector;
   stateVector << 0., 0., 0., 0., 0., 0.; //x,y,z,yaw,pitch,roll
