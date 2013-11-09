@@ -418,35 +418,32 @@ void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_gra
             m_DepthComponentGain * ( target_depthGradient * jacobianProy * jacobianRt - jacobianRt_z );
 
           //Assign the pixel residual and jacobian to its corresponding row
-          #pragma omp critical
+          //Assign intensity jacobians
+          jacobians(i,0) = jacobianItensity(0,0);
+          jacobians(i,1) = jacobianItensity(0,1);
+          jacobians(i,2) = jacobianItensity(0,2);
+          jacobians(i,3) = jacobianItensity(0,3);
+          jacobians(i,4) = jacobianItensity(0,4);
+          jacobians(i,5) = jacobianItensity(0,5);
+
+          //Assign intensity residuals
+          residuals( nCols * transformed_r_int + transformed_c_int , 0 ) = intensity2 - intensity1;
+
+          //Assign depth jacobians
+          jacobians( 2*i, 0 ) = jacobianDepth(0,0);
+          jacobians( 2*i, 1 ) = jacobianDepth(0,1);
+          jacobians( 2*i, 2 ) = jacobianDepth(0,2);
+          jacobians( 2*i, 3 ) = jacobianDepth(0,3);
+          jacobians( 2*i, 4 ) = jacobianDepth(0,4);
+          jacobians( 2*i, 5 ) = jacobianDepth(0,5);
+
+          //Assign depth residuals
+          residuals (nCols * 2 * transformed_r_int + 2 * transformed_c_int, 0 ) =
+          m_DepthComponentGain * ( depth2 - depth1 );
+
+          if( m_VisualizeIterations )
           {
-            //Assign intensity jacobians
-            jacobians(i,0) = jacobianItensity(0,0);
-            jacobians(i,1) = jacobianItensity(0,1);
-            jacobians(i,2) = jacobianItensity(0,2);
-            jacobians(i,3) = jacobianItensity(0,3);
-            jacobians(i,4) = jacobianItensity(0,4);
-            jacobians(i,5) = jacobianItensity(0,5);
-
-            //Assign intensity residuals
-            residuals( nCols * transformed_r_int + transformed_c_int , 0 ) = intensity2 - intensity1;
-
-            //Assign depth jacobians
-            jacobians( 2*i, 0 ) = jacobianDepth(0,0);
-            jacobians( 2*i, 1 ) = jacobianDepth(0,1);
-            jacobians( 2*i, 2 ) = jacobianDepth(0,2);
-            jacobians( 2*i, 3 ) = jacobianDepth(0,3);
-            jacobians( 2*i, 4 ) = jacobianDepth(0,4);
-            jacobians( 2*i, 5 ) = jacobianDepth(0,5);
-
-            //Assign depth residuals
-            residuals (nCols * 2 * transformed_r_int + 2 * transformed_c_int, 0 ) =
-              m_DepthComponentGain * ( depth2 - depth1 );
-
-            if( m_VisualizeIterations )
-            {
-              warped_source_grayImage( transformed_r_int, transformed_c_int ) = intensity1;
-            }
+            warped_source_grayImage( transformed_r_int, transformed_c_int ) = intensity1;
           }
         }
       }
