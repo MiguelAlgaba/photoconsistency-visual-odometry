@@ -55,7 +55,7 @@ int main (int argc,char ** argv)
 {
   if(argc<5){printHelp();return -1;}
 
-  typedef float CoordinateType;
+  typedef double CoordinateType;
   typedef phovo::Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
   typedef phovo::Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
   typedef phovo::Numeric::VectorCol6< CoordinateType >       Vector6Type;
@@ -83,7 +83,7 @@ int main (int argc,char ** argv)
 #if USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 0
   phovo::Analytic::CPhotoconsistencyOdometryAnalytic< PixelType, CoordinateType > photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 1
-  phovo::Ceres::CPhotoconsistencyOdometryCeres photoconsistencyOdometry;
+  phovo::Ceres::CPhotoconsistencyOdometryCeres< PixelType, CoordinateType > photoconsistencyOdometry;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 2
   phovo::Analytic::CPhotoconsistencyOdometryBiObjective< PixelType, CoordinateType > photoconsistencyOdometry;
 #endif
