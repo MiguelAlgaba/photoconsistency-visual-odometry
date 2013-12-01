@@ -291,7 +291,7 @@ private:
     {
       std::cout << "Rt: " << std::endl << m_ExtrinsicMatrix << std::endl;
       InternalIntensityImageType warpedImage;
-      phovo::warpImage< CoordinateType, CoordinateType >( m_SourceIntensityImage, m_SourceDepthImage,
+      phovo::WarpImage< CoordinateType, CoordinateType >( m_SourceIntensityImage, m_SourceDepthImage,
                                                           warpedImage, m_ExtrinsicMatrix, m_IntrinsicMatrix );
       InternalIntensityImageType imgDiff;
       cv::absdiff( m_TargetIntensityImage, warpedImage, imgDiff );
@@ -516,9 +516,8 @@ Vector6Type GetOptimalStateVector() const
 /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the Optimize() method.*/
 Matrix44Type GetOptimalRigidTransformationMatrix() const
 {
-  Matrix44Type Rt;
-  eigenPose( m_StateVector[0], m_StateVector[1], m_StateVector[2],
-             m_StateVector[3], m_StateVector[4], m_StateVector[5], Rt );
+  Matrix44Type Rt = PoseTranslationAndEulerAngles( m_StateVector[0], m_StateVector[1], m_StateVector[2],
+                                                   m_StateVector[3], m_StateVector[4], m_StateVector[5] );
   return Rt;
 }
 

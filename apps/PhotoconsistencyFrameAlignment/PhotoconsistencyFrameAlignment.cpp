@@ -105,7 +105,7 @@ int main (int argc,char ** argv)
   Matrix44Type Rt = photoconsistencyOdometry.GetOptimalRigidTransformationMatrix();
   std::cout << "main::Rt eigen:" << std::endl << Rt << std::endl;
   IntensityImageType warpedImage;
-  phovo::warpImage< PixelType, CoordinateType >( imgGray0, imgDepth0, warpedImage, Rt, intrinsicMatrix );
+  phovo::WarpImage< PixelType, CoordinateType >( imgGray0, imgDepth0, warpedImage, Rt, intrinsicMatrix );
   IntensityImageType imgDiff;
   cv::absdiff( imgGray1, warpedImage, imgDiff );
   cv::imshow( "main::imgDiff", imgDiff );

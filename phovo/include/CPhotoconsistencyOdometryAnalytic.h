@@ -68,6 +68,7 @@ public:
   typedef typename Superclass::Matrix44Type       Matrix44Type;
   typedef typename Superclass::Vector6Type        Vector6Type;
   typedef typename Superclass::Vector4Type        Vector4Type;
+  typedef typename Superclass::Vector3Type        Vector3Type;
 
 private:
   typedef DepthImageType                            InternalIntensityImageType;
@@ -102,7 +103,7 @@ private:
   /*!Enable the visualization of the optimization process (only for debug).*/
   bool m_VisualizeIterations;
   /*!State vector.*/
-  Vector6Type m_StateVector; //Parameter vector (x y z yaw pitch roll)
+  Vector6Type m_StateVector; //Parameter vector "twist" ( t0 t1 t2 w0 w1 w2 )
   /*!Gradient of the error function.*/
   Vector6Type m_Gradients;
   /*!Current iteration at the current optimization level.*/
@@ -208,62 +209,15 @@ void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_gra
   CoordinateType inv_fx = 1.f/fx;
   CoordinateType inv_fy = 1.f/fy;
 
-  CoordinateType x = m_StateVector(0);
-  CoordinateType y = m_StateVector(1);
-  CoordinateType z = m_StateVector(2);
-  CoordinateType yaw = m_StateVector(3);
-  CoordinateType pitch = m_StateVector(4);
-  CoordinateType roll = m_StateVector(5);
+  CoordinateType t0 = m_StateVector(0);
+  CoordinateType t1 = m_StateVector(1);
+  CoordinateType t2 = m_StateVector(2);
+  CoordinateType w0 = m_StateVector(3);
+  CoordinateType w1 = m_StateVector(4);
+  CoordinateType w2 = m_StateVector(5);
 
   //Compute the rigid transformation matrix from the parameters
-  Matrix44Type Rt = Matrix44Type::Identity();
-  CoordinateType sin_yaw = sin(yaw);
-  CoordinateType cos_yaw = cos(yaw);
-  CoordinateType sin_pitch = sin(pitch);
-  CoordinateType cos_pitch = cos(pitch);
-  CoordinateType sin_roll = sin(roll);
-  CoordinateType cos_roll = cos(roll);
-  Rt(0,0) = cos_yaw * cos_pitch;
-  Rt(0,1) = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
-  Rt(0,2) = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
-  Rt(0,3) = x;
-  Rt(1,0) = sin_yaw * cos_pitch;
-  Rt(1,1) = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
-  Rt(1,2) = sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll;
-  Rt(1,3) = y;
-  Rt(2,0) = -sin_pitch;
-  Rt(2,1) = cos_pitch * sin_roll;
-  Rt(2,2) = cos_pitch * cos_roll;
-  Rt(2,3) = z;
-  Rt(3,0) = 0.0;
-  Rt(3,1) = 0.0;
-  Rt(3,2) = 0.0;
-  Rt(3,3) = 1.0;
-
-  CoordinateType temp1 = cos(pitch)*sin(roll);
-  CoordinateType temp2 = cos(pitch)*cos(roll);
-  CoordinateType temp3 = sin(pitch);
-  CoordinateType temp4 = (sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw));
-  CoordinateType temp5 = (sin(pitch)*sin(roll)*cos(yaw)-cos(roll)*sin(yaw));
-  CoordinateType temp6 = (sin(pitch)*sin(roll)*sin(yaw)+cos(roll)*cos(yaw));
-  CoordinateType temp7 = (-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw));
-  CoordinateType temp8 = (sin(roll)*cos(yaw)-sin(pitch)*cos(roll)*sin(yaw));
-  CoordinateType temp9 = (sin(pitch)*cos(roll)*sin(yaw)-sin(roll)*cos(yaw));
-  CoordinateType temp10 = cos(pitch)*sin(roll)*cos(yaw);
-  CoordinateType temp11 = cos(pitch)*cos(yaw)+x;
-  CoordinateType temp12 = cos(pitch)*cos(roll)*cos(yaw);
-  CoordinateType temp13 = sin(pitch)*cos(yaw);
-  CoordinateType temp14 = cos(pitch)*sin(yaw);
-  CoordinateType temp15 = cos(pitch)*cos(yaw);
-  CoordinateType temp16 = sin(pitch)*sin(roll);
-  CoordinateType temp17 = sin(pitch)*cos(roll);
-  CoordinateType temp18 = cos(pitch)*sin(roll)*sin(yaw);
-  CoordinateType temp19 = cos(pitch)*cos(roll)*sin(yaw);
-  CoordinateType temp20 = sin(pitch)*sin(yaw);
-  CoordinateType temp21 = (cos(roll)*sin(yaw)-sin(pitch)*sin(roll)*cos(yaw));
-  CoordinateType temp22 = cos(pitch)*cos(roll);
-  CoordinateType temp23 = cos(pitch)*sin(roll);
-  CoordinateType temp24 = cos(pitch);
+  Matrix44Type Rt = PoseExponentialMap( t0, t1, t2, w0, w1, w2 );
 
   #if ENABLE_OPENMP_MULTITHREADING_ANALYTIC
   #pragma omp parallel for
@@ -307,53 +261,32 @@ void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_gra
           // pixel2: Intensity value of the pixel(r,c) of frame 2
           CoordinateType pixel1 = source_grayImg( r, c );
           CoordinateType pixel2 = target_grayImg( transformed_r_int, transformed_c_int );
-
-          //Compute the pixel jacobian
-          Numeric::FixedMatrixRowMajor< CoordinateType, 2, 6 > jacobianPrRt;
-          CoordinateType temp25 = 1.0/(z+py*temp1+pz*temp2-px*temp3);
-          CoordinateType temp26 = temp25*temp25;
-
+  
+          //Compute the rigid transformation jacobian
+          Numeric::FixedMatrixRowMajor< CoordinateType, 3, 6 > jacobianRt;
+          jacobianRt.block( 0, 0, 3, 3 ) = Numeric::Matrix33RowMajor< CoordinateType >::Identity();
+          jacobianRt.block( 0, 3, 3, 3 ) = -Hat< CoordinateType >( transformedPoint3D.block( 0, 0, 3, 1 ) );
+  
+          //Compute the projective transformation jacobian
+          Numeric::FixedMatrixRowMajor< CoordinateType, 2, 3 > jacobianProj;
+		  
           //Derivative with respect to x
-          jacobianPrRt(0,0) = fx*temp25;
-          jacobianPrRt(1,0) = 0.0;
+          jacobianProj(0,0) = fx*inv_transformedPz;
+          jacobianProj(1,0) = 0.;
 
           //Derivative with respect to y
-          jacobianPrRt(0,1) = 0.0;
-          jacobianPrRt(1,1) = fy*temp25;
+          jacobianProj(0,1) = 0.;
+          jacobianProj(1,1) = fy*inv_transformedPz;
 
           //Derivative with respect to z
-          jacobianPrRt(0,2) = -fx*(pz*temp4+py*temp5+px*temp11)*temp26;
-          jacobianPrRt(1,2) = -fy*(py*temp6+pz*temp9+px*temp14+y)*temp26;
-
-          //Derivative with respect to yaw
-          jacobianPrRt(0,3) = fx*(py*temp7+pz*temp8-px*temp14)*temp25;
-          jacobianPrRt(1,3) = fy*(pz*temp4+py*temp5+px*temp15)*temp25;
-
-          //Derivative with respect to pitch
-          jacobianPrRt(0,4) = fx*(py*temp10+pz*temp12-px*temp13)*temp25
-                              -fx*(-py*temp16-pz*temp17-px*temp24)*(pz*temp4+py*temp5+px*temp11)*temp26;
-          jacobianPrRt(1,4) = fy*(py*temp18+pz*temp19-px*temp20)*temp25
-                              -fy*(-py*temp16-pz*temp17-px*temp24)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
-
-          //Derivative with respect to roll
-          jacobianPrRt(0,5) = fx*(py*temp4+pz*temp21)*temp25
-                              -fx*(py*temp22-pz*temp23)*(pz*temp4+py*temp5+px*temp11)*temp26;
-          jacobianPrRt(1,5) = fy*(pz*temp7+py*temp9)*temp25
-                              -fy*(py*temp22-pz*temp23)*(py*temp6+pz*temp9+px*temp14+y)*temp26;
+          jacobianProj(0,2) = -(fx*transformedPoint3D(0))*inv_transformedPz*inv_transformedPz;
+          jacobianProj(1,2) = -(fy*transformedPoint3D(1))*inv_transformedPz*inv_transformedPz;
 
           //Apply the chain rule to compound the image gradients with the projective+RigidTransform jacobians
           Numeric::FixedRowVector< CoordinateType, 2 > target_imgGradient;
           target_imgGradient(0) = target_gradXImg(i);
           target_imgGradient(1) = target_gradYImg(i);
-          Numeric::FixedRowVector< CoordinateType, 6 > jacobian = target_imgGradient*jacobianPrRt;
-
-          //Assign the pixel residual and jacobian to its corresponding row
-          jacobians(i,0)=jacobian(0,0);
-          jacobians(i,1)=jacobian(0,1);
-          jacobians(i,2)=jacobian(0,2);
-          jacobians(i,3)=jacobian(0,3);
-          jacobians(i,4)=jacobian(0,4);
-          jacobians(i,5)=jacobian(0,5);
+          jacobians.block( i, 0, 1, 6 ) = target_imgGradient * jacobianProj * jacobianRt;
 
           residuals( nCols * transformed_r_int + transformed_c_int , 0 ) = pixel2 - pixel1;
           if( m_VisualizeIterations )
@@ -571,9 +504,8 @@ Vector6Type GetOptimalStateVector() const
 /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the Optimize() method.*/
 Matrix44Type GetOptimalRigidTransformationMatrix() const
 {
-  Matrix44Type Rt;
-  eigenPose( m_StateVector(0), m_StateVector(1), m_StateVector(2),
-             m_StateVector(3), m_StateVector(4), m_StateVector(5), Rt );
+  Matrix44Type Rt = PoseExponentialMap( m_StateVector(0), m_StateVector(1), m_StateVector(2),
+                                        m_StateVector(3), m_StateVector(4), m_StateVector(5) );
   return Rt;
 }
 
