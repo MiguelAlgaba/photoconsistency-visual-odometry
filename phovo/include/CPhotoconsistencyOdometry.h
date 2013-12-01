@@ -129,8 +129,11 @@ PoseExponentialMap( const T t0, const T t1, const T t2,
     Matrix33Type w_hat = Hat( w );
     Matrix33Type R = Rodrigues( w );
     pose.block( 0, 0, 3, 3 ) = R;
-    pose.block( 0, 3, 3, 1 ) = ( 1. / phi ) * ( ( Matrix33Type::Identity() - R ) * w_hat * t +
-      w * w.transpose() * t );
+    CoordinateType inv_phi = 1. / phi;
+    Matrix33Type V = Matrix33Type::Identity() +
+      ( inv_phi * inv_phi ) * ( 1. - cos( phi )  ) * w_hat +
+      ( inv_phi * inv_phi * inv_phi ) * ( phi - sin( phi ) ) * w_hat * w_hat;
+    pose.block( 0, 3, 3, 1 ) = V * t;
   }
   else
   {
