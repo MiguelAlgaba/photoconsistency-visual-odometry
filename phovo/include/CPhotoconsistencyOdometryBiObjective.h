@@ -516,6 +516,8 @@ CPhotoconsistencyOdometryBiObjective() : m_MinDepth( 0.3 ), m_MaxDepth( 5.0 )
 {
   m_StateVector.setZero();
   m_NumOptimizationLevels = 5;
+  m_OptimizationLevel = m_NumOptimizationLevels-1;
+  m_Iteration = 0;
   m_BlurFilterSizes.resize( m_NumOptimizationLevels, 0 );
   m_ImageGradientsScalingFactors.resize( m_NumOptimizationLevels, 0.0625 );
   m_LambdaOptimizationSteps.resize( m_NumOptimizationLevels, 1. );

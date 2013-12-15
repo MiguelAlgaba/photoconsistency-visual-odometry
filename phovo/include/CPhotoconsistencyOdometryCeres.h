@@ -380,7 +380,35 @@ void BuildDerivativesPyramids( InternalIntensityImageContainerType & imagePyrami
 
 public:
 
-CPhotoconsistencyOdometryCeres() : m_MinDepth( 0.3 ), m_MaxDepth( 5.0 ){}
+CPhotoconsistencyOdometryCeres() : m_MinDepth( 0.3 ), m_MaxDepth( 5.0 )
+{
+  this->SetInitialStateVector( Vector6Type::Zero() );
+  m_NumOptimizationLevels = 5;
+  m_OptimizationLevel = m_NumOptimizationLevels-1;
+  m_Iteration = 0;
+  m_BlurFilterSizes.resize( m_NumOptimizationLevels, 0 );
+  m_ImageGradientsScalingFactors.resize( m_NumOptimizationLevels, 0.0625 );
+  m_MaxNumIterations.resize( m_NumOptimizationLevels, 0 );
+  m_MaxNumIterations[ 0 ] = 0;
+  m_MaxNumIterations[ 1 ] = 0;
+  m_MaxNumIterations[ 2 ] = 5;
+  m_MaxNumIterations[ 3 ] = 20;
+  m_MaxNumIterations[ 4 ] = 50;
+  m_FunctionTolerances.resize( m_NumOptimizationLevels, 1e-4 );
+  m_GradientTolerances.resize( m_NumOptimizationLevels, 1e-3 );
+  m_ParameterTolerances.resize( m_NumOptimizationLevels, 1e-6 );
+  m_ParameterTolerances[ 0 ] = 1e-4;
+  m_ParameterTolerances[ 1 ] = 1e-4;
+  m_InitialTrustRegionRadiuses.resize( m_NumOptimizationLevels, 1e4 );
+  m_InitialTrustRegionRadiuses[ 0 ] = 1e8;
+  m_MaxTrustRegionRadiuses.resize( m_NumOptimizationLevels, 1e8 );
+  m_MinTrustRegionRadiuses.resize( m_NumOptimizationLevels, 1e-32 );
+  m_MinRelativeDecreases.resize( m_NumOptimizationLevels, 1e-3 );
+  m_VisualizeIterations = false;
+  m_NumLinearSolverThreads = 1;
+  m_NumThreads = 1;
+  m_MinimizerProgressToStdout = false;
+}
 
 ~CPhotoconsistencyOdometryCeres(){}
 

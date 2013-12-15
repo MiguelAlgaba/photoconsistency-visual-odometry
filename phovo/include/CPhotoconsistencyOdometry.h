@@ -196,7 +196,7 @@ void WarpImage( const cv::Mat_< TPixel > & intensityImage,
 
         //Asign the intensity value to the warped image and compute the difference between the transformed
         //pixel of frame 1 and the corresponding pixel of frame 2. Compute the error function
-        if( transformed_r >= 0 && transformed_r < intensityImage.rows &
+        if( transformed_r >= 0 && transformed_r < intensityImage.rows &&
             transformed_c >= 0 && transformed_c < intensityImage.cols)
         {
           warpedIntensityImage( transformed_r, transformed_c ) = intensityImage( r, c );
