@@ -46,6 +46,7 @@
 #include "sample.h"
 #include "jet_extras.h"
 #include "ceres/ceres.h"
+#include "ceres/rotation.h"
 #include "opencv2/highgui/highgui.hpp" //visualize iterations
 
 namespace phovo
@@ -102,7 +103,7 @@ private:
   /*!Enable the visualization of the optimization process (only for debug).*/
   bool m_VisualizeIterations;
   /*!State vector.*/
-  CoordinateType m_StateVector[ 6 ]; //Parameter vector (x y z yaw pitch roll)
+  CoordinateType m_StateVector[ 6 ]; //Parameter vector (t0 t1 t2 w0 w1 w2)
   /*!Current iteration at the current optimization level.*/
   int m_Iteration;
   CoordinateContainerType m_FunctionTolerances;
@@ -169,31 +170,25 @@ private:
       T oy = T( m_IntrinsicMatrix(1,2) ) / pow( 2, T( m_OptimizationLevel ) );
 
       //Compute the rigid transformation matrix from the parameters
-      T x = stateVector[0];
-      T y = stateVector[1];
-      T z = stateVector[2];
-      T yaw = stateVector[3];
-      T pitch = stateVector[4];
-      T roll = stateVector[5];
+      T *w = new T[3];
+      T *R = new T[9];
+      w[0] = stateVector[3];
+      w[1] = stateVector[4];
+      w[2] = stateVector[5];
+      ceres::AngleAxisToRotationMatrix( w, R );
       T Rt[4][4];
-      T sin_yaw = sin(yaw);
-      T cos_yaw = cos(yaw);
-      T sin_pitch = sin(pitch);
-      T cos_pitch = cos(pitch);
-      T sin_roll = sin(roll);
-      T cos_roll = cos(roll);
-      Rt[0][0] = cos_yaw * cos_pitch;
-      Rt[0][1] = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
-      Rt[0][2] = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
-      Rt[0][3] = x;
-      Rt[1][0] = sin_yaw * cos_pitch;
-      Rt[1][1] = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
-      Rt[1][2] = sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll;
-      Rt[1][3] = y;
-      Rt[2][0] = -sin_pitch;
-      Rt[2][1] = cos_pitch * sin_roll;
-      Rt[2][2] = cos_pitch * cos_roll;
-      Rt[2][3] = z;
+      Rt[0][0] = R[0];
+      Rt[0][1] = R[3];
+      Rt[0][2] = R[6];
+      Rt[0][3] = stateVector[0];
+      Rt[1][0] = R[1];
+      Rt[1][1] = R[4];
+      Rt[1][2] = R[7];
+      Rt[1][3] = stateVector[1];
+      Rt[2][0] = R[2];
+      Rt[2][1] = R[5];
+      Rt[2][2] = R[8];
+      Rt[2][3] = stateVector[2];
       Rt[3][0] = T(0.);
       Rt[3][1] = T(0.);
       Rt[3][2] = T(0.);
@@ -265,6 +260,9 @@ private:
         }
       }
 
+      delete w;
+      delete R;
+
       return true;
     }
   };
@@ -296,7 +294,7 @@ private:
       InternalIntensityImageType imgDiff;
       cv::absdiff( m_TargetIntensityImage, warpedImage, imgDiff );
       cv::imshow( "callback: imgDiff", imgDiff );
-      cv::waitKey( 5 );
+      cv::waitKey( 0 );
 
       return ceres::SOLVER_CONTINUE;
     }
@@ -544,8 +542,8 @@ Vector6Type GetOptimalStateVector() const
 /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the Optimize() method.*/
 Matrix44Type GetOptimalRigidTransformationMatrix() const
 {
-  Matrix44Type Rt = PoseTranslationAndEulerAngles( m_StateVector[0], m_StateVector[1], m_StateVector[2],
-                                                   m_StateVector[3], m_StateVector[4], m_StateVector[5] );
+  Matrix44Type Rt = PoseExponentialMap( m_StateVector[0], m_StateVector[1], m_StateVector[2],
+                                        m_StateVector[3], m_StateVector[4], m_StateVector[5] );
   return Rt;
 }
 
