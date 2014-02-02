@@ -294,10 +294,6 @@ void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_gra
         point3D(1) = (r - oy) * point3D(2) * inv_fy;
         point3D(3) = 1.0;
 
-        CoordinateType px = point3D(0);
-        CoordinateType py = point3D(1);
-        CoordinateType pz = point3D(2);
-
         //Transform the 3D point using the transformation matrix Rt
         Vector4Type transformedPoint3D = Rt*point3D;
 
