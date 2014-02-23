@@ -37,7 +37,6 @@ if( ${PHOVO_WITH_CERES} MATCHES "ON" )
 endif()
 
 # Add the "apps" subdirectory
-option( BUILD_PHOTOCONSISTENCY_FRAME_ALIGNMENT_APPLICATION "Build PhotoconsistencyFrameAlignment application" ON )
 add_subdirectory( apps )
 
 # Set optimized building:
