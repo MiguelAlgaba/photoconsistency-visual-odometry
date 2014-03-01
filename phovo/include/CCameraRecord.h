@@ -35,6 +35,7 @@
 #define CCAMERA_RECORD_H
 
 #include "CSensorRecordBase.h"
+#include "CImageReader.h"
 #include <fstream>
 #include "boost/filesystem/path.hpp"
 
@@ -89,7 +90,9 @@ public:
 
       boost::filesystem::path cameraRecordDirectory( boost::filesystem::path( this->m_FileName ).parent_path() );
       boost::filesystem::path imagePath( cameraRecordDirectory / imageFileName );
-      typename ImageDataType::DataSharedPointer image( new typename ImageDataType::DataType( cv::imread( imagePath.string() ) ) );
+      typename ImageDataType::DataSharedPointer image(
+        new typename ImageDataType::DataType(
+          CImageReader< typename ImageDataType::DataType >::ReadImage( imagePath.string() ) ) );
       this->m_SensorData.reset( new ImageDataType );
       this->m_SensorData->SetData( image );
       this->m_SensorData->SetTimeStamp( timeStamp );
