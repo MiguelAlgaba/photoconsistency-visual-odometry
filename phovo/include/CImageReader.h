@@ -49,11 +49,30 @@ class CImageReader< cv::Mat_< TPixel > >
 {
 public:
   typedef TPixel PixelType;
-  typedef cv::Mat_< TPixel > ImageType;
+  typedef cv::Mat_< PixelType > ImageType;
 
   static ImageType ReadImage( const std::string & fileName )
   {
     return cv::imread( fileName, -1 );
+  }
+
+private:
+  CImageReader();                          // purposely not implemented
+  ~CImageReader();                         // purposely not implemented
+  CImageReader( const CImageReader& );     // purposely not implemented
+  void operator = ( const CImageReader& ); // purposely not implemented
+};
+
+template<>
+class CImageReader< cv::Mat_< unsigned char > >
+{
+public:
+  typedef unsigned char PixelType;
+  typedef cv::Mat_< PixelType > ImageType;
+
+  static ImageType ReadImage( const std::string & fileName )
+  {
+    return cv::imread( fileName, 0 );
   }
 
 private:
