@@ -48,12 +48,32 @@
 
 void printHelp()
 {
-  std::cout << "./PhotoconsistencyFrameAlignment <config_file.yml>" << std::endl;
+  std::cout << "./PhotoconsistencyFrameAlignment <config_file.yml> <rgbd_dataset_directory>" << std::endl;
 }
 
-int main (int argc,char ** argv)
+int parseInputArguments( int argc, char* argv[],
+                         std::string & configFileName, std::string & rgbdDatasetDirectory )
 {
-  if(argc<2){printHelp();return -1;}
+  if( argc<3 )
+  {
+    printHelp();
+    return EXIT_FAILURE;
+  }
+
+  configFileName = argv[1];
+  rgbdDatasetDirectory = argv[2];
+
+  return 0;
+}
+
+int main( int argc, char* argv[] )
+{
+  std::string configFileName;
+  std::string rgbdDatasetDirectory;
+  if( parseInputArguments( argc, argv, configFileName, rgbdDatasetDirectory ) )
+  {
+    return EXIT_FAILURE;
+  }
 
   typedef double CoordinateType;
   typedef phovo::Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;

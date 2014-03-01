@@ -6,9 +6,9 @@ include_directories( ${PHOVO_SOURCE_DIR}/third_party )
 add_executable( PhotoconsistencyVisualOdometry PhotoconsistencyVisualOdometry.cpp )
 
 if( ${PHOVO_WITH_CERES} MATCHES "ON" )
-  target_link_libraries( PhotoconsistencyVisualOdometry ${OpenCV_LIBS} ${CERES_LIBRARIES} )
+  target_link_libraries( PhotoconsistencyVisualOdometry ${OpenCV_LIBS} ${CERES_LIBRARIES} ${Boost_LIBRARIES} )
 else()
-  target_link_libraries( PhotoconsistencyVisualOdometry ${OpenCV_LIBS} )
+  target_link_libraries( PhotoconsistencyVisualOdometry ${OpenCV_LIBS} ${Boost_LIBRARIES} )
 endif()
 
 # Set optimized building:

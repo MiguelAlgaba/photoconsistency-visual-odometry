@@ -65,10 +65,7 @@ public:
     return this->m_ReferenceFrame;
   }
 
-  SensorDataSharedPointer GetSensorData() const
-  {
-    return this->m_SensorData;
-  }
+  virtual SensorDataSharedPointer GetSensorData() = 0;
 
   virtual void Start() = 0;
 

@@ -35,6 +35,8 @@
 #define CCAMERA_RECORD_H
 
 #include "CSensorRecordBase.h"
+#include <fstream>
+#include "boost/filesystem/path.hpp"
 
 namespace phovo
 {
@@ -57,10 +59,57 @@ public:
   {}
 
   void Start()
-  {}
+  {
+    // Open the camera record file
+    this->m_CameraRecordFile.open( this->m_FileName );
+    if( !this->m_CameraRecordFile.is_open() )
+    {
+      std::string errorMsg( "Unable to open camera record file " + this->m_FileName  );
+      throw std::runtime_error( errorMsg );
+    }
+  }
+
+  ImageDataSharedPointer GetSensorData()
+  {
+    bool retrievedData = false;
+    while( this->m_CameraRecordFile.good() && !retrievedData )
+    {
+      std::string fileLine;
+      std::getline( this->m_CameraRecordFile, fileLine );
+      if( this->m_CameraRecordFile.eof() || fileLine[0] == '#' )
+      {
+        continue;
+      }
+      std::istringstream iss( fileLine );
+      typename ImageDataType::TimeStampType timeStamp;
+      std::string imageFileName;
+      iss >> timeStamp;
+      iss >> imageFileName;
+      retrievedData = true;
+
+      boost::filesystem::path cameraRecordDirectory( boost::filesystem::path( this->m_FileName ).parent_path() );
+      boost::filesystem::path imagePath( cameraRecordDirectory / imageFileName );
+      typename ImageDataType::DataSharedPointer image( new typename ImageDataType::DataType( cv::imread( imagePath.string() ) ) );
+      this->m_SensorData.reset( new ImageDataType );
+      this->m_SensorData->SetData( image );
+      this->m_SensorData->SetTimeStamp( timeStamp );
+    }
+
+    if( !retrievedData )
+    {
+      this->m_SensorData.reset();
+    }
+
+    return this->m_SensorData;
+  }
 
   void Stop()
-  {}
+  {
+    this->m_CameraRecordFile.close();
+  }
+
+private:
+  std::ifstream m_CameraRecordFile;
 
 };
 } //end namespace phovo
