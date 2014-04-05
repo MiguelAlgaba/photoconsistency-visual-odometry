@@ -43,6 +43,15 @@
   #include "CPhotoconsistencyOdometryBiObjective.h"
 #endif
 
+#include "CSensorIdentifier.h"
+#include "CSensorData.h"
+#include "CCameraRecord.h"
+#include "CMultiSensorData.h"
+#include "CMultiSensorDataSource.h"
+
+#include "boost/filesystem/path.hpp"
+#include "boost/filesystem/operations.hpp"
+
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/contrib/contrib.hpp" //TickMeter
 
@@ -52,7 +61,9 @@ void printHelp()
 }
 
 int parseInputArguments( int argc, char* argv[],
-                         std::string & configFileName, std::string & rgbdDatasetDirectory )
+                         boost::filesystem::path & configFile,
+                         boost::filesystem::path & rgbDataFile,
+                         boost::filesystem::path & depthDataFile )
 {
   if( argc<3 )
   {
@@ -60,45 +71,109 @@ int parseInputArguments( int argc, char* argv[],
     return EXIT_FAILURE;
   }
 
-  configFileName = argv[1];
-  rgbdDatasetDirectory = argv[2];
+  configFile = boost::filesystem::path( argv[1] );
+  if( !boost::filesystem::exists( configFile ) )
+  {
+    std::cerr << "Input config file " << configFile << " does not exist" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  boost::filesystem::path rgbdDatasetDirectory( argv[2] );
+  if( !boost::filesystem::exists( rgbdDatasetDirectory ) )
+  {
+    std::cerr << "Input RGBD dataset directory " << rgbdDatasetDirectory << " does not exist" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  rgbDataFile = rgbdDatasetDirectory / boost::filesystem::path( "rgb.txt" );
+  if( !boost::filesystem::exists( rgbDataFile ) )
+  {
+    std::cerr << "Input RGB data file " << rgbDataFile << " does not exist" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  depthDataFile = rgbdDatasetDirectory / boost::filesystem::path( "depth.txt" );
+  if( !boost::filesystem::exists( depthDataFile ) )
+  {
+    std::cerr << "Input depth data file " << depthDataFile << " does not exist" << std::endl;
+    return EXIT_FAILURE;
+  }
 
   return 0;
 }
 
 int main( int argc, char* argv[] )
 {
-  std::string configFileName;
-  std::string rgbdDatasetDirectory;
-  if( parseInputArguments( argc, argv, configFileName, rgbdDatasetDirectory ) )
-  {
-    return EXIT_FAILURE;
-  }
-
+  // Basic algebra typedefs
   typedef double CoordinateType;
   typedef phovo::Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
   typedef phovo::Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
   typedef phovo::Numeric::VectorCol6< CoordinateType >       Vector6Type;
 
-  typedef unsigned char PixelType;
+  // Internal sensor data typedefs
+  typedef unsigned char              PixelType;
   typedef cv::Mat_< PixelType >      IntensityImageType;
   typedef cv::Mat_< CoordinateType > DepthImageType;
 
-  //Set the camera parameters
-  Matrix33Type intrinsicMatrix;
-  intrinsicMatrix << 525., 0., 319.5,
-                     0., 525., 239.5,
-                     0., 0., 1.;
+  // Multi-sensor data typedefs
+  typedef double                                                         TimeStampType;
+  typedef phovo::SensorIdentifierType                                    SensorIdentifierType;
+  typedef phovo::CMultiSensorData< SensorIdentifierType, TimeStampType > MultiSensorDataType;
 
-  //Define the photoconsistency odometry object and set the input parameters
+  // Multi-sensor data source typedefs (RGBD data record)
+  typedef phovo::CSensorData< IntensityImageType, TimeStampType >        IntensityImageDataType;
+  typedef phovo::CSensorData< DepthImageType, TimeStampType >            DepthImageDataType;
+  typedef phovo::CCameraRecord< IntensityImageDataType, Vector6Type >    IntensityImageRecordType;
+  typedef IntensityImageRecordType::ImageDataSharedPointer               IntensityImageDataSharedPointer;
+  typedef phovo::CCameraRecord< DepthImageDataType, Vector6Type >        DepthImageRecordType;
+  typedef DepthImageRecordType::ImageDataSharedPointer                   DepthImageDataSharedPointer;
+  typedef phovo::CMultiSensorData< SensorIdentifierType, TimeStampType > MultiSensorDataType;
+  typedef phovo::CMultiSensorDataSource< MultiSensorDataType >           MultiSensorDataSourceType;
+
+  // Photo-consistency visual odometry typedefs
 #if USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 0
-  phovo::Analytic::CPhotoconsistencyOdometryAnalytic< PixelType, CoordinateType > photoconsistencyOdometry;
+  typedef phovo::Analytic::CPhotoconsistencyOdometryAnalytic< PixelType, CoordinateType > PhotoconsistencyVisualOdometryType;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 1
-  phovo::Ceres::CPhotoconsistencyOdometryCeres< PixelType, CoordinateType > photoconsistencyOdometry;
+  typedef phovo::Ceres::CPhotoconsistencyOdometryCeres< PixelType, CoordinateType > PhotoconsistencyVisualOdometryType;
 #elif USE_PHOTOCONSISTENCY_ODOMETRY_METHOD == 2
-  phovo::Analytic::CPhotoconsistencyOdometryBiObjective< PixelType, CoordinateType > photoconsistencyOdometry;
+  typedef phovo::Analytic::CPhotoconsistencyOdometryBiObjective< PixelType, CoordinateType > PhotoconsistencyVisualOdometryType;
 #endif
 
-  return 0;
+  // Parse the input arguments
+  boost::filesystem::path configFile;
+  boost::filesystem::path rgbDataFile;
+  boost::filesystem::path depthDataFile;
+  if( parseInputArguments( argc, argv, configFile, rgbDataFile, depthDataFile ) )
+  {
+    return EXIT_FAILURE;
+  }
+
+  // Set multi-sensor data record and start retrieving frames
+  IntensityImageRecordType::SharedPointer intensityImageRecord( new IntensityImageRecordType );
+  intensityImageRecord->SetFileName( rgbDataFile.string() );
+  DepthImageRecordType::SharedPointer depthImageRecord( new DepthImageRecordType );
+  depthImageRecord->SetFileName( depthDataFile.string() );
+  MultiSensorDataSourceType::SharedPointer multisensorDataSource( new MultiSensorDataSourceType );
+  multisensorDataSource->SetSensorDataSource( phovo::IntensityCameraIdentifier, intensityImageRecord );
+  multisensorDataSource->SetSensorDataSource( phovo::DepthCameraIdentifier, depthImageRecord );
+  multisensorDataSource->Start();
+
+  MultiSensorDataSourceType::MultiSensorDataSharedPointer intensityDepthData;
+  do
+  {
+    // Extract the RGB and depth images from the multi-sensor data object (if available)
+    intensityDepthData = multisensorDataSource->GetMultiSensorData();
+    if( intensityDepthData )
+    {
+      IntensityImageDataSharedPointer intensityImageData =
+        intensityDepthData->GetData< IntensityImageDataType >( phovo::IntensityCameraIdentifier );
+      DepthImageDataSharedPointer depthImageData =
+        intensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier );
+    }
+  }
+  while( intensityDepthData );
+  multisensorDataSource->Stop();
+
+  return EXIT_SUCCESS;
 }
 
