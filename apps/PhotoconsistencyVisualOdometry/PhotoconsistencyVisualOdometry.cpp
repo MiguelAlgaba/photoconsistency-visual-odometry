@@ -148,6 +148,17 @@ int main( int argc, char* argv[] )
     return EXIT_FAILURE;
   }
 
+  // Set the photo-consistency visual odometry parameters
+  Matrix33Type intrinsicMatrix;
+  intrinsicMatrix << 517.3, 0., 318.6,
+                     0., 516.5, 255.3,
+                     0., 0., 1.;
+  Vector6Type stateVector;
+  stateVector << 0., 0., 0., 0., 0., 0.; //x,y,z,yaw,pitch,roll
+  PhotoconsistencyVisualOdometryType photoconsistencyOdometry;
+  photoconsistencyOdometry.ReadConfigurationFile( configFile.string() );
+  photoconsistencyOdometry.SetIntrinsicMatrix( intrinsicMatrix );
+
   // Set multi-sensor data record and start retrieving frames
   IntensityImageRecordType::SharedPointer intensityImageRecord( new IntensityImageRecordType );
   intensityImageRecord->SetFileName( rgbDataFile.string() );
@@ -158,20 +169,54 @@ int main( int argc, char* argv[] )
   multisensorDataSource->SetSensorDataSource( phovo::DepthCameraIdentifier, depthImageRecord );
   multisensorDataSource->Start();
 
-  MultiSensorDataSourceType::MultiSensorDataSharedPointer intensityDepthData;
-  do
+  MultiSensorDataSourceType::MultiSensorDataSharedPointer previousIntensityDepthData =
+    multisensorDataSource->GetMultiSensorData();
+  if( previousIntensityDepthData )
   {
-    // Extract the RGB and depth images from the multi-sensor data object (if available)
-    intensityDepthData = multisensorDataSource->GetMultiSensorData();
-    if( intensityDepthData )
+    // Extract the previous RGB and depth images from the multi-sensor data object
+    IntensityImageType previousIntensityImage =
+      *previousIntensityDepthData->GetData< IntensityImageDataType >( phovo::IntensityCameraIdentifier )->GetData();
+    DepthImageType previousDepthImage =
+      *previousIntensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier )->GetData() / 1000.;
+
+    MultiSensorDataSourceType::MultiSensorDataSharedPointer currentIntensityDepthData =
+      multisensorDataSource->GetMultiSensorData();
+    while( currentIntensityDepthData )
     {
-      IntensityImageDataSharedPointer intensityImageData =
-        intensityDepthData->GetData< IntensityImageDataType >( phovo::IntensityCameraIdentifier );
-      DepthImageDataSharedPointer depthImageData =
-        intensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier );
+      // Extract the current RGB and depth images from the multi-sensor data object
+      IntensityImageType currentIntensityImage =
+        *currentIntensityDepthData->GetData< IntensityImageDataType >( phovo::IntensityCameraIdentifier )->GetData();
+      DepthImageType currentDepthImage =
+        *currentIntensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier )->GetData() / 1000.;
+
+      photoconsistencyOdometry.SetSourceFrame( previousIntensityImage, previousDepthImage );
+      photoconsistencyOdometry.SetTargetFrame( currentIntensityImage, previousDepthImage );
+      photoconsistencyOdometry.SetInitialStateVector( stateVector );
+
+      // Optimize the problem to estimate the rigid transformation
+      cv::TickMeter tm;tm.start();
+      photoconsistencyOdometry.Optimize();
+      tm.stop();
+      std::cout << "Time = " << tm.getTimeSec() << " sec." << std::endl;
+
+      // Show results
+      Matrix44Type Rt = photoconsistencyOdometry.GetOptimalRigidTransformationMatrix();
+      std::cout << "Rt:" << std::endl << Rt << std::endl;
+      IntensityImageType warpedImage;
+      phovo::warpImage< PixelType, CoordinateType >( previousIntensityImage,
+                                                     previousDepthImage,
+                                                     warpedImage, Rt, intrinsicMatrix );
+      IntensityImageType imgDiff;
+      cv::absdiff( currentIntensityImage, warpedImage, imgDiff );
+      cv::imshow( "imgDiff", imgDiff );
+      cv::waitKey( 5 );
+
+      // Update the previous and current frames
+      previousIntensityImage = currentIntensityImage;
+      previousDepthImage = currentDepthImage;
+      currentIntensityDepthData = multisensorDataSource->GetMultiSensorData();
     }
   }
-  while( intensityDepthData );
   multisensorDataSource->Stop();
 
   return EXIT_SUCCESS;
