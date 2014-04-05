@@ -203,7 +203,7 @@ int main( int argc, char* argv[] )
       Matrix44Type Rt = photoconsistencyOdometry.GetOptimalRigidTransformationMatrix();
       std::cout << "Rt:" << std::endl << Rt << std::endl;
       IntensityImageType warpedImage;
-      phovo::warpImage< PixelType, CoordinateType >( previousIntensityImage,
+      phovo::WarpImage< PixelType, CoordinateType >( previousIntensityImage,
                                                      previousDepthImage,
                                                      warpedImage, Rt, intrinsicMatrix );
       IntensityImageType imgDiff;
