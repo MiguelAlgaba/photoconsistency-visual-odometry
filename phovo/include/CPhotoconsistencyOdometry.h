@@ -45,10 +45,13 @@ namespace phovo
 {
 
 template< class T >
-void eigenPose( const T x, const T y, const T z,
-                const T yaw, const T pitch, const T roll,
-                Numeric::Matrix44RowMajor< T > & pose)
+Numeric::Matrix44RowMajor< T >
+PoseTranslationAndEulerAngles( const T x, const T y, const T z,
+                               const T yaw, const T pitch, const T roll )
 {
+  typedef T CoordinateType;
+  typedef Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
+  Matrix44Type pose;
   pose(0,0) = cos(yaw) * cos(pitch);
   pose(0,1) = cos(yaw) * sin(pitch) * sin(roll) - sin(yaw) * cos(roll);
   pose(0,2) = cos(yaw) * sin(pitch) * cos(roll) + sin(yaw) * sin(roll);
@@ -68,10 +71,80 @@ void eigenPose( const T x, const T y, const T z,
   pose(3,1) = 0;
   pose(3,2) = 0;
   pose(3,3) = 1;
+
+  return pose;
+}
+
+template< class T >
+Numeric::Matrix33RowMajor< T >
+Hat( const Numeric::VectorCol3< T > & v )
+{
+  typedef T CoordinateType;
+  typedef Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
+  Matrix33Type m = Matrix33Type::Zero();
+  m( 0, 1 ) = -v( 2 );
+  m( 1, 0 ) = v( 2 );
+  m( 0, 2 ) = v( 1 );
+  m( 2, 0 ) = -v( 1 );
+  m( 1, 2 ) = -v( 0 );
+  m( 2, 1 ) = v( 0 );
+
+  return m;
+}
+
+template< class T >
+Numeric::Matrix33RowMajor< T >
+Rodrigues( const Numeric::VectorCol3< T > & w )
+{
+  typedef T CoordinateType;
+  typedef Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
+  Matrix33Type R = Matrix33Type::Identity();
+  CoordinateType phi = w.norm();
+  if( phi > 100. * std::numeric_limits< CoordinateType >::epsilon() )
+  {
+    CoordinateType inv_phi = 1. / phi;
+    Matrix33Type w_hat = Hat( w );
+    R += inv_phi * w_hat * sin( phi ) +
+      ( inv_phi * inv_phi ) * w_hat * w_hat * ( 1. - cos( phi ) );
+  }
+
+  return R;
+}
+
+template< class T >
+Numeric::Matrix44RowMajor< T >
+PoseExponentialMap( const T t0, const T t1, const T t2,
+                    const T w0, const T w1, const T w2 )
+{
+  typedef T CoordinateType;
+  typedef Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
+  typedef Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
+  typedef Numeric::VectorCol3< CoordinateType >       Vector3Type;
+  Matrix44Type pose = Matrix44Type::Identity();
+  Vector3Type t; t << t0, t1, t2;
+  Vector3Type w; w << w0, w1, w2;
+  CoordinateType phi = w.norm();
+  if( phi > 100. * std::numeric_limits< CoordinateType >::epsilon() )
+  {
+    Matrix33Type w_hat = Hat( w );
+    Matrix33Type R = Rodrigues( w );
+    pose.block( 0, 0, 3, 3 ) = R;
+    CoordinateType inv_phi = 1. / phi;
+    Matrix33Type V = Matrix33Type::Identity() +
+      ( inv_phi * inv_phi ) * ( 1. - cos( phi )  ) * w_hat +
+      ( inv_phi * inv_phi * inv_phi ) * ( phi - sin( phi ) ) * w_hat * w_hat;
+    pose.block( 0, 3, 3, 1 ) = V * t;
+  }
+  else
+  {
+    pose.block( 0, 3, 3, 1 ) = t;
+  }
+
+  return pose;
 }
 
 template< class TPixel, class TCoordinate >
-void warpImage( const cv::Mat_< TPixel > & intensityImage,
+void WarpImage( const cv::Mat_< TPixel > & intensityImage,
                 const cv::Mat_< TCoordinate > & depthImage,
                 cv::Mat_< TPixel > & warpedIntensityImage,
                 const Numeric::Matrix44RowMajor< TCoordinate > & Rt,
@@ -123,7 +196,7 @@ void warpImage( const cv::Mat_< TPixel > & intensityImage,
 
         //Asign the intensity value to the warped image and compute the difference between the transformed
         //pixel of frame 1 and the corresponding pixel of frame 2. Compute the error function
-        if( transformed_r >= 0 && transformed_r < intensityImage.rows &
+        if( transformed_r >= 0 && transformed_r < intensityImage.rows &&
             transformed_c >= 0 && transformed_c < intensityImage.cols)
         {
           warpedIntensityImage( transformed_r, transformed_c ) = intensityImage( r, c );
@@ -148,6 +221,7 @@ public:
   typedef Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
   typedef Numeric::VectorCol6< CoordinateType >       Vector6Type;
   typedef Numeric::VectorCol4< CoordinateType >       Vector4Type;
+  typedef Numeric::VectorCol3< CoordinateType >       Vector3Type;
 
   /*!Sets the 3x3 intrinsic pinhole matrix.*/
   virtual void SetIntrinsicMatrix( const Matrix33Type & intrinsicMatrix ) = 0;
