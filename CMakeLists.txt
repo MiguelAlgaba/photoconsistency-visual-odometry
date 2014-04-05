@@ -10,6 +10,21 @@ configure_file( ${PHOVO_SOURCE_DIR}/config.h.in ${PHOVO_SOURCE_DIR}/phovo/includ
 # Define the output directories for the executables
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PHOVO_BINARY_DIR}/bin )
 
+# Boost library
+if(APPLE)
+  set( Boost_USE_STATIC_LIBS ON )
+else()
+  add_definitions( -DBOOST_ALL_DYN_LINK )
+endif()
+set( Boost_USE_MULTITHREADED ON )
+find_package( Boost 1.54 REQUIRED
+  COMPONENTS
+    filesystem
+    system
+    program_options
+)
+include_directories( ${Boost_INCLUDE_DIRS} )
+
 # OpenCV library
 find_package( OpenCV 2.4.5 REQUIRED )
 
@@ -37,7 +52,6 @@ if( ${PHOVO_WITH_CERES} MATCHES "ON" )
 endif()
 
 # Add the "apps" subdirectory
-option( BUILD_PHOTOCONSISTENCY_FRAME_ALIGNMENT_APPLICATION "Build PhotoconsistencyFrameAlignment application" ON )
 add_subdirectory( apps )
 
 # Set optimized building:
