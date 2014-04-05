@@ -220,7 +220,7 @@ int main( int argc, char* argv[] )
       DepthImageType currentDepthImage = *currentDepthImageData->GetData() * depthScalingFactor;
 
       photoconsistencyOdometry.SetSourceFrame( previousIntensityImage, previousDepthImage );
-      photoconsistencyOdometry.SetTargetFrame( currentIntensityImage, previousDepthImage );
+      photoconsistencyOdometry.SetTargetFrame( currentIntensityImage, currentDepthImage );
       photoconsistencyOdometry.SetInitialStateVector( stateVector );
 
       // Optimize the problem to estimate the rigid transformation
