@@ -31,46 +31,15 @@
  *
  */
 
-#ifndef CSENSOR_RECORD_BASE_H
-#define CSENSOR_RECORD_BASE_H
+#ifndef CSENSOR_IDENTIFIER_H
+#define CSENSOR_IDENTIFIER_H
 
 #include <string>
 
-#include "CSensorDataSourceBase.h"
-
 namespace phovo
 {
-template< class TSensorData, class TReferenceFrame >
-class CSensorRecordBase :
-  public CSensorDataSourceBase< TSensorData, TReferenceFrame >
-{
-public:
-  typedef CSensorDataSourceBase< TSensorData, TReferenceFrame > Superclass;
-  typedef CSensorRecordBase< TSensorData, TReferenceFrame >     Self;
-  typedef std::shared_ptr< Self >                               SharedPointer;
-
-  typedef typename Superclass::SensorDataType          SensorDataType;
-  typedef typename Superclass::ReferenceFrameType      ReferenceFrameType;
-  typedef typename Superclass::SensorDataSharedPointer SensorDataSharedPointer;
-
-  CSensorRecordBase() : Superclass(), m_FileName( std::string() )
-  {}
-
-  virtual ~CSensorRecordBase()
-  {}
-
-  void SetFileName( const std::string & fileName )
-  {
-    this->m_FileName = fileName;
-  }
-
-  std::string GetFileName() const
-  {
-    return this->m_FileName;
-  }
-
-protected:
-  std::string m_FileName;
-};
+  typedef std::string        SensorIdentifierType;
+  const SensorIdentifierType IntensityCameraIdentifier = "IntensityCamera";
+  const SensorIdentifierType DepthCameraIdentifier     = "DepthCamera";
 } //end namespace phovo
 #endif

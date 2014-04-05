@@ -31,46 +31,36 @@
  *
  */
 
-#ifndef CSENSOR_RECORD_BASE_H
-#define CSENSOR_RECORD_BASE_H
+#ifndef CDATA_SOURCE_BASE_H
+#define CDATA_SOURCE_BASE_H
 
-#include <string>
-
-#include "CSensorDataSourceBase.h"
+#include "CDataBase.h"
 
 namespace phovo
 {
-template< class TSensorData, class TReferenceFrame >
-class CSensorRecordBase :
-  public CSensorDataSourceBase< TSensorData, TReferenceFrame >
+template< class TTimeStamp >
+class CDataSourceBase
 {
 public:
-  typedef CSensorDataSourceBase< TSensorData, TReferenceFrame > Superclass;
-  typedef CSensorRecordBase< TSensorData, TReferenceFrame >     Self;
-  typedef std::shared_ptr< Self >                               SharedPointer;
+  typedef TTimeStamp                       TimeStampType;
+  typedef CDataBase< TimeStampType >       DataType;
+  typedef typename DataType::SharedPointer DataSharedPointer;
+  
+  typedef CDataSourceBase< TimeStampType > Self;
+  typedef std::shared_ptr< Self >          SharedPointer;
 
-  typedef typename Superclass::SensorDataType          SensorDataType;
-  typedef typename Superclass::ReferenceFrameType      ReferenceFrameType;
-  typedef typename Superclass::SensorDataSharedPointer SensorDataSharedPointer;
-
-  CSensorRecordBase() : Superclass(), m_FileName( std::string() )
+  CDataSourceBase()
   {}
 
-  virtual ~CSensorRecordBase()
+  virtual ~CDataSourceBase()
   {}
 
-  void SetFileName( const std::string & fileName )
-  {
-    this->m_FileName = fileName;
-  }
+  virtual DataSharedPointer GetData() = 0;
 
-  std::string GetFileName() const
-  {
-    return this->m_FileName;
-  }
+  virtual void Start() = 0;
 
-protected:
-  std::string m_FileName;
+  virtual void Stop() = 0;
+
 };
 } //end namespace phovo
 #endif

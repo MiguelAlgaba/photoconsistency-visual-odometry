@@ -46,14 +46,15 @@ class CCameraRecord :
   public CSensorRecordBase< TImageData, TReferenceFrame >
 {
 public:
-  typedef CSensorRecordBase< TImageData, TReferenceFrame > SuperClass;
+  typedef CSensorRecordBase< TImageData, TReferenceFrame > Superclass;
   typedef CCameraRecord< TImageData, TReferenceFrame >     Self;
+  typedef std::shared_ptr< Self >                          SharedPointer;
 
-  typedef typename SuperClass::SensorDataType          ImageDataType;
-  typedef typename SuperClass::ReferenceFrameType      ReferenceFrameType;
-  typedef typename SuperClass::SensorDataSharedPointer ImageDataSharedPointer;
+  typedef typename Superclass::SensorDataType          ImageDataType;
+  typedef typename Superclass::ReferenceFrameType      ReferenceFrameType;
+  typedef typename Superclass::SensorDataSharedPointer ImageDataSharedPointer;
 
-  CCameraRecord() : SuperClass()
+  CCameraRecord() : Superclass()
   {}
 
   ~CCameraRecord()

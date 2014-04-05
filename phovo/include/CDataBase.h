@@ -31,46 +31,43 @@
  *
  */
 
-#ifndef CSENSOR_RECORD_BASE_H
-#define CSENSOR_RECORD_BASE_H
+#ifndef CDATA_BASE_H
+#define CDATA_BASE_H
 
-#include <string>
-
-#include "CSensorDataSourceBase.h"
+#include <memory>
 
 namespace phovo
 {
-template< class TSensorData, class TReferenceFrame >
-class CSensorRecordBase :
-  public CSensorDataSourceBase< TSensorData, TReferenceFrame >
+template< class TTimeStamp >
+class CDataBase
 {
 public:
-  typedef CSensorDataSourceBase< TSensorData, TReferenceFrame > Superclass;
-  typedef CSensorRecordBase< TSensorData, TReferenceFrame >     Self;
-  typedef std::shared_ptr< Self >                               SharedPointer;
+  typedef TTimeStamp                 TimeStampType;
+  typedef CDataBase< TimeStampType > Self;
+  typedef std::shared_ptr< Self >    SharedPointer;
 
-  typedef typename Superclass::SensorDataType          SensorDataType;
-  typedef typename Superclass::ReferenceFrameType      ReferenceFrameType;
-  typedef typename Superclass::SensorDataSharedPointer SensorDataSharedPointer;
-
-  CSensorRecordBase() : Superclass(), m_FileName( std::string() )
+  CDataBase() : m_TimeStamp( TimeStampType() )
   {}
 
-  virtual ~CSensorRecordBase()
+  virtual ~CDataBase()
   {}
 
-  void SetFileName( const std::string & fileName )
+  void SetTimeStamp( const TimeStampType & timeStamp )
   {
-    this->m_FileName = fileName;
+    m_TimeStamp = timeStamp;
   }
 
-  std::string GetFileName() const
+  TimeStampType GetTimeStamp() const
   {
-    return this->m_FileName;
+    return m_TimeStamp;
   }
 
 protected:
-  std::string m_FileName;
+  TimeStampType m_TimeStamp;
+
+private:
+  CDataBase( const CDataBase & );        // purposely not implemented
+  void operator = ( const CDataBase & ); // purposely not implemented
 };
 } //end namespace phovo
 #endif

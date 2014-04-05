@@ -31,46 +31,58 @@
  *
  */
 
-#ifndef CSENSOR_RECORD_BASE_H
-#define CSENSOR_RECORD_BASE_H
+#ifndef CMULTI_SENSOR_DATA_H
+#define CMULTI_SENSOR_DATA_H
 
-#include <string>
-
-#include "CSensorDataSourceBase.h"
+#include <map>
+#include <memory>
+#include "CDataBase.h"
 
 namespace phovo
 {
-template< class TSensorData, class TReferenceFrame >
-class CSensorRecordBase :
-  public CSensorDataSourceBase< TSensorData, TReferenceFrame >
+template< class TSensorIdentifier, class TTimeStamp >
+class CMultiSensorData
 {
 public:
-  typedef CSensorDataSourceBase< TSensorData, TReferenceFrame > Superclass;
-  typedef CSensorRecordBase< TSensorData, TReferenceFrame >     Self;
-  typedef std::shared_ptr< Self >                               SharedPointer;
+  typedef TSensorIdentifier                      SensorIdentifierType;
+  typedef TTimeStamp                             TimeStampType;
+  typedef CDataBase< TimeStampType >             SensorDataType;
+  typedef typename SensorDataType::SharedPointer SensorDataSharedPointer;
 
-  typedef typename Superclass::SensorDataType          SensorDataType;
-  typedef typename Superclass::ReferenceFrameType      ReferenceFrameType;
-  typedef typename Superclass::SensorDataSharedPointer SensorDataSharedPointer;
+  typedef CMultiSensorData        Self;
+  typedef std::shared_ptr< Self > SharedPointer;
 
-  CSensorRecordBase() : Superclass(), m_FileName( std::string() )
+  CMultiSensorData() : m_SensorDataMap( SensorIdentifierDataMapType() )
   {}
 
-  virtual ~CSensorRecordBase()
+  ~CMultiSensorData()
   {}
 
-  void SetFileName( const std::string & fileName )
+  void SetData( const SensorIdentifierType & sensorId, const SensorDataSharedPointer data )
   {
-    this->m_FileName = fileName;
+    this->m_SensorDataMap.insert( typename SensorIdentifierDataMapType::value_type( sensorId, data ) );
   }
 
-  std::string GetFileName() const
+  template< class TSensorData >
+  typename TSensorData::SharedPointer GetData( const SensorIdentifierType & sensorId ) const
   {
-    return this->m_FileName;
+    typename TSensorData::SharedPointer sensorData;
+    typename SensorIdentifierDataMapType::const_iterator it = this->m_SensorDataMap.find( sensorId );
+    typename SensorIdentifierDataMapType::const_iterator itEnd = this->m_SensorDataMap.end();
+    if( it != itEnd )
+    {
+      sensorData = std::static_pointer_cast< TSensorData >( it->second );
+    }
+    return sensorData;
   }
 
-protected:
-  std::string m_FileName;
+private:
+  typedef std::map< SensorIdentifierType, SensorDataSharedPointer > SensorIdentifierDataMapType;
+
+  SensorIdentifierDataMapType m_SensorDataMap;
+
+  CMultiSensorData( const CMultiSensorData & ); // purposely not implemented
+  void operator = ( const CMultiSensorData & ); // purposely not implemented
 };
 } //end namespace phovo
 #endif

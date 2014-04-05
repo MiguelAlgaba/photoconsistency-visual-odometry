@@ -34,32 +34,31 @@
 #ifndef CSENSOR_DATA_H
 #define CSENSOR_DATA_H
 
-#include <memory>
+#include "CDataBase.h"
 
 namespace phovo
 {
 template< class TData, class TTimeStamp >
-class CSensorData
+class CSensorData : public CDataBase< TTimeStamp >
 {
 public:
   typedef TData                       DataType;
   typedef TTimeStamp                  TimeStampType;
   typedef std::shared_ptr< DataType > DataSharedPointer;
 
-  CSensorData() : m_Data( new DataType() ), m_TimeStamp( TimeStampType() )
+  typedef CDataBase< TTimeStamp >                Superclass;
+  typedef CSensorData< DataType, TimeStampType > Self;
+  typedef std::shared_ptr< Self >                SharedPointer;
+
+  CSensorData() : Superclass(), m_Data( new DataType() )
   {}
 
   ~CSensorData()
   {}
 
-  void SetData( const DataSharedPointer & data )
+  void SetData( const DataSharedPointer data )
   {
     m_Data = data;
-  }
-
-  void SetTimeStamp( const TimeStampType & timeStamp )
-  {
-    m_TimeStamp = timeStamp;
   }
 
   DataSharedPointer GetData() const
@@ -67,14 +66,8 @@ public:
     return m_Data;
   }
 
-  TimeStampType GetTimeStamp() const
-  {
-    return m_TimeStamp;
-  }
-
 private:
   DataSharedPointer m_Data;
-  TimeStampType     m_TimeStamp;
 
   CSensorData( const CSensorData & );      // purposely not implemented
   void operator = ( const CSensorData & ); // purposely not implemented

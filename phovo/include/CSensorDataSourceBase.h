@@ -34,21 +34,25 @@
 #ifndef CSENSOR_DATA_SOURCE_BASE_H
 #define CSENSOR_DATA_SOURCE_BASE_H
 
-#include <memory>
+#include "CDataSourceBase.h"
 
 namespace phovo
 {
 template< class TSensorData, class TReferenceFrame >
-class CSensorDataSourceBase
+class CSensorDataSourceBase :
+  public CDataSourceBase< typename TSensorData::TimeStampType >
 {
 public:
-  typedef TSensorData                       SensorDataType;
-  typedef TReferenceFrame                   ReferenceFrameType;
-  typedef std::shared_ptr< SensorDataType > SensorDataSharedPointer;
+  typedef TSensorData                            SensorDataType;
+  typedef TReferenceFrame                        ReferenceFrameType;
+  typedef typename SensorDataType::SharedPointer SensorDataSharedPointer;
 
+  typedef CDataSourceBase< typename TSensorData::TimeStampType >      Superclass;
+  typedef typename Superclass::DataSharedPointer                      DataSharedPointer;
   typedef CSensorDataSourceBase< SensorDataType, ReferenceFrameType > Self;
+  typedef std::shared_ptr< Self >                                     SharedPointer;
 
-  CSensorDataSourceBase() : m_SensorData( new SensorDataType ),
+  CSensorDataSourceBase() : Superclass(), m_SensorData( new SensorDataType ),
     m_ReferenceFrame( ReferenceFrameType() )
   {}
 
@@ -65,11 +69,12 @@ public:
     return this->m_ReferenceFrame;
   }
 
+  DataSharedPointer GetData()
+  {
+    return this->GetSensorData();
+  }
+
   virtual SensorDataSharedPointer GetSensorData() = 0;
-
-  virtual void Start() = 0;
-
-  virtual void Stop() = 0;
 
 protected:
   SensorDataSharedPointer m_SensorData;
