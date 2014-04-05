@@ -49,23 +49,26 @@
 #include "CMultiSensorData.h"
 #include "CMultiSensorDataSource.h"
 
+#include <iomanip>
 #include "boost/filesystem/path.hpp"
 #include "boost/filesystem/operations.hpp"
-
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/contrib/contrib.hpp" //TickMeter
 
 void printHelp()
 {
-  std::cout << "./PhotoconsistencyFrameAlignment <config_file.yml> <rgbd_dataset_directory>" << std::endl;
+  std::cout << "./PhotoconsistencyFrameAlignment <config_file.yml> "
+            << "<rgbd_dataset_directory> "
+            << "<output_trajectory_file>" << std::endl;
 }
 
 int parseInputArguments( int argc, char* argv[],
                          boost::filesystem::path & configFile,
                          boost::filesystem::path & rgbDataFile,
-                         boost::filesystem::path & depthDataFile )
+                         boost::filesystem::path & depthDataFile,
+                         boost::filesystem::path & outputTrajectoryFile )
 {
-  if( argc<3 )
+  if( argc<4 )
   {
     printHelp();
     return EXIT_FAILURE;
@@ -99,6 +102,17 @@ int parseInputArguments( int argc, char* argv[],
     return EXIT_FAILURE;
   }
 
+  outputTrajectoryFile = boost::filesystem::path( argv[3] );
+  boost::filesystem::path outputDirectory( outputTrajectoryFile.parent_path() );
+  if( !boost::filesystem::exists( outputDirectory ) )
+  {
+    if( !boost::filesystem::create_directories( outputDirectory ) )
+    {
+      std::cerr << "Cannot create output directory " << outputDirectory << std::endl;
+      return EXIT_FAILURE;
+    }
+  }
+
   return 0;
 }
 
@@ -108,7 +122,9 @@ int main( int argc, char* argv[] )
   typedef double CoordinateType;
   typedef phovo::Numeric::Matrix33RowMajor< CoordinateType > Matrix33Type;
   typedef phovo::Numeric::Matrix44RowMajor< CoordinateType > Matrix44Type;
+  typedef phovo::Numeric::VectorCol3< CoordinateType >       Vector3Type;
   typedef phovo::Numeric::VectorCol6< CoordinateType >       Vector6Type;
+  typedef Eigen::Quaternion< CoordinateType >                QuaternionType;
 
   // Internal sensor data typedefs
   typedef unsigned char              PixelType;
@@ -143,7 +159,9 @@ int main( int argc, char* argv[] )
   boost::filesystem::path configFile;
   boost::filesystem::path rgbDataFile;
   boost::filesystem::path depthDataFile;
-  if( parseInputArguments( argc, argv, configFile, rgbDataFile, depthDataFile ) )
+  boost::filesystem::path outputTrajectoryFile;
+  CoordinateType depthScalingFactor = 1. / 5000.;
+  if( parseInputArguments( argc, argv, configFile, rgbDataFile, depthDataFile, outputTrajectoryFile ) )
   {
     return EXIT_FAILURE;
   }
@@ -153,11 +171,21 @@ int main( int argc, char* argv[] )
   intrinsicMatrix << 517.3, 0., 318.6,
                      0., 516.5, 255.3,
                      0., 0., 1.;
-  Vector6Type stateVector;
-  stateVector << 0., 0., 0., 0., 0., 0.; //x,y,z,yaw,pitch,roll
+  Matrix44Type pose = Matrix44Type::Identity();
+  Vector6Type stateVector = Vector6Type::Zero();
   PhotoconsistencyVisualOdometryType photoconsistencyOdometry;
   photoconsistencyOdometry.ReadConfigurationFile( configFile.string() );
   photoconsistencyOdometry.SetIntrinsicMatrix( intrinsicMatrix );
+
+  // Open the output trajectory file
+  std::ofstream trajectoryFile( outputTrajectoryFile.string() );
+  if( !trajectoryFile.is_open() )
+  {
+    std::cerr << "Cannot open output trajectory file " << outputTrajectoryFile.string() << std::endl;
+    return EXIT_FAILURE;
+  }
+  trajectoryFile << "# estimated trajectory" << std::endl;
+  trajectoryFile << "# timestamp tx ty tz qx qy qz qw" << std::endl;
 
   // Set multi-sensor data record and start retrieving frames
   IntensityImageRecordType::SharedPointer intensityImageRecord( new IntensityImageRecordType );
@@ -177,17 +205,19 @@ int main( int argc, char* argv[] )
     IntensityImageType previousIntensityImage =
       *previousIntensityDepthData->GetData< IntensityImageDataType >( phovo::IntensityCameraIdentifier )->GetData();
     DepthImageType previousDepthImage =
-      *previousIntensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier )->GetData() / 1000.;
+      *previousIntensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier )->GetData() * depthScalingFactor;
 
     MultiSensorDataSourceType::MultiSensorDataSharedPointer currentIntensityDepthData =
       multisensorDataSource->GetMultiSensorData();
-    while( currentIntensityDepthData )
+    while( currentIntensityDepthData && ( cv::waitKey(5) != 'q' ) )
     {
       // Extract the current RGB and depth images from the multi-sensor data object
-      IntensityImageType currentIntensityImage =
-        *currentIntensityDepthData->GetData< IntensityImageDataType >( phovo::IntensityCameraIdentifier )->GetData();
-      DepthImageType currentDepthImage =
-        *currentIntensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier )->GetData() / 1000.;
+      IntensityImageDataSharedPointer currentIntensityImageData =
+        currentIntensityDepthData->GetData< IntensityImageDataType >( phovo::IntensityCameraIdentifier );
+      IntensityImageType currentIntensityImage = *currentIntensityImageData->GetData();
+      DepthImageDataSharedPointer currentDepthImageData =
+        currentIntensityDepthData->GetData< DepthImageDataType >( phovo::DepthCameraIdentifier );
+      DepthImageType currentDepthImage = *currentDepthImageData->GetData() * depthScalingFactor;
 
       photoconsistencyOdometry.SetSourceFrame( previousIntensityImage, previousDepthImage );
       photoconsistencyOdometry.SetTargetFrame( currentIntensityImage, previousDepthImage );
@@ -199,8 +229,20 @@ int main( int argc, char* argv[] )
       tm.stop();
       std::cout << "Time = " << tm.getTimeSec() << " sec." << std::endl;
 
-      // Show results
+      // Update the global pose of the sensor
       Matrix44Type Rt = photoconsistencyOdometry.GetOptimalRigidTransformationMatrix();
+      pose *= Rt.inverse();
+      Matrix33Type R = pose.block( 0, 0, 3, 3 );
+      Vector3Type t = pose.block( 0, 3, 3, 1 );
+      QuaternionType q( R );
+
+      // Write the current timestamped pose to the output trajectory file
+      trajectoryFile << std::setprecision( std::numeric_limits< TimeStampType >::digits10 + 1 )
+                     << currentIntensityImageData->GetTimeStamp() << " "
+                     << t( 0 ) << " " << t( 1 ) << " " << t( 2 ) << " "
+                     << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
+
+      // Show results
       std::cout << "Rt:" << std::endl << Rt << std::endl;
       IntensityImageType warpedImage;
       phovo::warpImage< PixelType, CoordinateType >( previousIntensityImage,
@@ -209,7 +251,6 @@ int main( int argc, char* argv[] )
       IntensityImageType imgDiff;
       cv::absdiff( currentIntensityImage, warpedImage, imgDiff );
       cv::imshow( "imgDiff", imgDiff );
-      cv::waitKey( 5 );
 
       // Update the previous and current frames
       previousIntensityImage = currentIntensityImage;
@@ -217,7 +258,10 @@ int main( int argc, char* argv[] )
       currentIntensityDepthData = multisensorDataSource->GetMultiSensorData();
     }
   }
+
+  // Stop grabbing sensor frames and close the output trajectory file
   multisensorDataSource->Stop();
+  trajectoryFile.close();
 
   return EXIT_SUCCESS;
 }
