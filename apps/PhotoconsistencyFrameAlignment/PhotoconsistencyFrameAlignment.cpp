@@ -88,7 +88,7 @@ int main (int argc,char ** argv)
   phovo::Analytic::CPhotoconsistencyOdometryBiObjective< PixelType, CoordinateType > photoconsistencyOdometry;
 #endif
   Vector6Type stateVector;
-  stateVector << 0., 0., 0., 0., 0., 0.; //x,y,z,yaw,pitch,roll
+  stateVector << 0., 0., 0., 0., 0., 0.; //t0,t1,t2,w0,w1,w2
   photoconsistencyOdometry.ReadConfigurationFile( std::string( argv[1] ) );
   photoconsistencyOdometry.SetIntrinsicMatrix( intrinsicMatrix );
   photoconsistencyOdometry.SetSourceFrame( imgGray0, imgDepth0 );
@@ -105,7 +105,7 @@ int main (int argc,char ** argv)
   Matrix44Type Rt = photoconsistencyOdometry.GetOptimalRigidTransformationMatrix();
   std::cout << "main::Rt eigen:" << std::endl << Rt << std::endl;
   IntensityImageType warpedImage;
-  phovo::warpImage< PixelType, CoordinateType >( imgGray0, imgDepth0, warpedImage, Rt, intrinsicMatrix );
+  phovo::WarpImage< PixelType, CoordinateType >( imgGray0, imgDepth0, warpedImage, Rt, intrinsicMatrix );
   IntensityImageType imgDiff;
   cv::absdiff( imgGray1, warpedImage, imgDiff );
   cv::imshow( "main::imgDiff", imgDiff );

@@ -104,7 +104,7 @@ private:
   /*!Enable the visualization of the optimization process (only for debug).*/
   bool m_VisualizeIterations;
   /*!State vector.*/
-  Vector6Type m_StateVector; //Parameter vector (x y z yaw pitch roll)
+  Vector6Type m_StateVector; //Parameter vector (t0 t1 t2 w0 w1 w2)
   /*!Gradient of the error function.*/
   Vector6Type m_Gradients;
   /*!Current iteration at the current optimization level.*/
@@ -264,37 +264,15 @@ void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_gra
   CoordinateType inv_fx = 1.f/fx;
   CoordinateType inv_fy = 1.f/fy;
 
-  CoordinateType x = m_StateVector(0);
-  CoordinateType y = m_StateVector(1);
-  CoordinateType z = m_StateVector(2);
-  CoordinateType yaw = m_StateVector(3);
-  CoordinateType pitch = m_StateVector(4);
-  CoordinateType roll = m_StateVector(5);
+  CoordinateType t0 = m_StateVector(0);
+  CoordinateType t1 = m_StateVector(1);
+  CoordinateType t2 = m_StateVector(2);
+  CoordinateType w0 = m_StateVector(3);
+  CoordinateType w1 = m_StateVector(4);
+  CoordinateType w2 = m_StateVector(5);
 
   //Compute the rigid transformation matrix from the parameters
-  Matrix44Type Rt = Matrix44Type::Identity();
-  CoordinateType sin_yaw = sin(yaw);
-  CoordinateType cos_yaw = cos(yaw);
-  CoordinateType sin_pitch = sin(pitch);
-  CoordinateType cos_pitch = cos(pitch);
-  CoordinateType sin_roll = sin(roll);
-  CoordinateType cos_roll = cos(roll);
-  Rt(0,0) = cos_yaw * cos_pitch;
-  Rt(0,1) = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
-  Rt(0,2) = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
-  Rt(0,3) = x;
-  Rt(1,0) = sin_yaw * cos_pitch;
-  Rt(1,1) = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
-  Rt(1,2) = sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll;
-  Rt(1,3) = y;
-  Rt(2,0) = -sin_pitch;
-  Rt(2,1) = cos_pitch * sin_roll;
-  Rt(2,2) = cos_pitch * cos_roll;
-  Rt(2,3) = z;
-  Rt(3,0) = 0.0;
-  Rt(3,1) = 0.0;
-  Rt(3,2) = 0.0;
-  Rt(3,3) = 1.0;
+  Matrix44Type Rt = PoseExponentialMap( t0, t1, t2, w0, w1, w2 );
 
   m_DepthComponentGain = cv::mean( target_grayImg ).val[0] / cv::mean( target_depthImg ).val[0];
 
@@ -315,10 +293,6 @@ void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_gra
         point3D(0) = (c - ox) * point3D(2) * inv_fx;
         point3D(1) = (r - oy) * point3D(2) * inv_fy;
         point3D(3) = 1.0;
-
-        CoordinateType px = point3D(0);
-        CoordinateType py = point3D(1);
-        CoordinateType pz = point3D(2);
 
         //Transform the 3D point using the transformation matrix Rt
         Vector4Type transformedPoint3D = Rt*point3D;
@@ -349,36 +323,8 @@ void ComputeResidualsAndJacobians( const InternalIntensityImageType & source_gra
 
           //Compute the rigid transformation jacobian
           Numeric::FixedMatrixRowMajor< CoordinateType, 3, 6 > jacobianRt;
-
-          //Derivative with respect to x
-          jacobianRt(0,0) = 1.;
-          jacobianRt(1,0) = 0.;
-          jacobianRt(2,0) = 0.;
-
-          //Derivative with respect to y
-          jacobianRt(0,1) = 0.;
-          jacobianRt(1,1) = 1.;
-          jacobianRt(2,1) = 0.;
-
-          //Derivative with respect to z
-          jacobianRt(0,2) = 0.;
-          jacobianRt(1,2) = 0.;
-          jacobianRt(2,2) = 1.;
-
-          //Derivative with respect to yaw
-          jacobianRt(0,3) = py*(-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw))+pz*(sin(roll)*cos(yaw)-sin(pitch)*cos(roll)*sin(yaw))-cos(pitch)*px*sin(yaw);
-          jacobianRt(1,3) = pz*(sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw))+py*(sin(pitch)*sin(roll)*cos(yaw)-cos(roll)*sin(yaw))+cos(pitch)*px*cos(yaw);
-          jacobianRt(2,3) = 0.;
-
-          //Derivative with respect to pitch
-          jacobianRt(0,4) = cos(pitch)*py*sin(roll)*cos(yaw)+cos(pitch)*pz*cos(roll)*cos(yaw)-sin(pitch)*px*cos(yaw);
-          jacobianRt(1,4) = cos(pitch)*py*sin(roll)*sin(yaw)+cos(pitch)*pz*cos(roll)*sin(yaw)-sin(pitch)*px*sin(yaw);
-          jacobianRt(2,4) = -sin(pitch)*py*sin(roll)-sin(pitch)*pz*cos(roll)-cos(pitch)*px;
-
-          //Derivative with respect to roll
-          jacobianRt(0,5) = py*(sin(roll)*sin(yaw)+sin(pitch)*cos(roll)*cos(yaw))+pz*(cos(roll)*sin(yaw)-sin(pitch)*sin(roll)*cos(yaw));
-          jacobianRt(1,5) = pz*(-sin(pitch)*sin(roll)*sin(yaw)-cos(roll)*cos(yaw))+py*(sin(pitch)*cos(roll)*sin(yaw)-sin(roll)*cos(yaw));
-          jacobianRt(2,5) = cos(pitch)*py*cos(roll)-cos(pitch)*pz*sin(roll);
+          jacobianRt.block( 0, 0, 3, 3 ) = Numeric::Matrix33RowMajor< CoordinateType >::Identity();
+          jacobianRt.block( 0, 3, 3, 3 ) = -Hat< CoordinateType >( transformedPoint3D.block( 0, 0, 3, 1 ) );
 
           //Compute the proyective transformation jacobian
           Numeric::FixedMatrixRowMajor< CoordinateType, 2, 3 > jacobianProy;
@@ -516,6 +462,8 @@ CPhotoconsistencyOdometryBiObjective() : m_MinDepth( 0.3 ), m_MaxDepth( 5.0 )
 {
   m_StateVector.setZero();
   m_NumOptimizationLevels = 5;
+  m_OptimizationLevel = m_NumOptimizationLevels-1;
+  m_Iteration = 0;
   m_BlurFilterSizes.resize( m_NumOptimizationLevels, 0 );
   m_ImageGradientsScalingFactors.resize( m_NumOptimizationLevels, 0.0625 );
   m_LambdaOptimizationSteps.resize( m_NumOptimizationLevels, 1. );
@@ -661,9 +609,8 @@ Vector6Type GetOptimalStateVector() const
 /*!Returns the optimal 4x4 rigid transformation matrix between the source and target frame. This method has to be called after calling the Optimize() method.*/
 Matrix44Type GetOptimalRigidTransformationMatrix() const
 {
-  Matrix44Type Rt;
-  eigenPose( m_StateVector(0), m_StateVector(1), m_StateVector(2),
-             m_StateVector(3), m_StateVector(4), m_StateVector(5), Rt );
+  Matrix44Type Rt = PoseExponentialMap( m_StateVector(0), m_StateVector(1), m_StateVector(2),
+                                        m_StateVector(3), m_StateVector(4), m_StateVector(5) );
   return Rt;
 }
 
